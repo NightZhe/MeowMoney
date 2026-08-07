@@ -1,0 +1,15 @@
+# Xcode 建置產物
+build/
+build-ios/
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# 上架產物
+*.xcarchive
+*.ipa
+*.dSYM.zip
+
+# 系統
+.DS_Store
