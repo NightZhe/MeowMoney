@@ -6,6 +6,7 @@ enum Cute {
     // MARK: - 顏色
 
     static let cream = Color(hex: 0xFFF6EC)          // 背景奶油白
+    static let creamDeep = Color(hex: 0xFFEFE2)      // 背景漸層的底色，也用於底部淡出
     static let card = Color.white
     static let peach = Color(hex: 0xFFA59D)          // 主色：蜜桃粉
     static let peachDeep = Color(hex: 0xFF7E71)
@@ -20,7 +21,7 @@ enum Cute {
     /// 主背景漸層（由上而下微微變化，避免大面積死白）
     static var background: LinearGradient {
         LinearGradient(
-            colors: [Color(hex: 0xFFF9F3), cream, Color(hex: 0xFFEFE2)],
+            colors: [Color(hex: 0xFFF9F3), cream, creamDeep],
             startPoint: .top,
             endPoint: .bottom
         )

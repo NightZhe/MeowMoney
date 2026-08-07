@@ -13,3 +13,4 @@ DerivedData/
 
 # 系統
 .DS_Store
+build-release/

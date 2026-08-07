@@ -71,6 +71,17 @@ struct RootTabView: View {
         )
         .padding(.horizontal, 26)
         .padding(.bottom, 6)
+        // 捲動內容會從浮動膠囊兩側穿出來，加一層淡出讓它化掉而不是被切斷。
+        .background(
+            LinearGradient(
+                colors: [Cute.creamDeep.opacity(0), Cute.creamDeep.opacity(0.92), Cute.creamDeep],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .padding(.top, -34)
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
+        )
     }
 }
 

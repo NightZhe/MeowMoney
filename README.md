@@ -3,7 +3,8 @@
 可愛風格的 iOS 語音記帳 app。按一下麥克風，說「午餐便當一百二」，
 就自動解析成 **金額 120 / 分類 餐飲 / 備註 午餐便當**，確認後存進帳本。
 
-- 平台：iOS 17.0 以上（iPhone / iPad）
+- 平台：iOS 17.0 以上，**僅 iPhone**、僅直式
+  （`TARGETED_DEVICE_FAMILY = "1"`；設成 iPad 相容的話上架要另外準備 iPad 截圖）
 - 技術：SwiftUI + SwiftData + Speech Framework
 - 資料：**全部留在裝置上**，沒有後端、沒有帳號、不上傳雲端
 - Bundle ID：`com.harrylee.meowmoney`（上架前可改，見 `UPLOAD-GUIDE.md`）
@@ -45,7 +46,11 @@ xcodebuild test -project MeowMoney.xcodeproj -scheme MeowMoney -destination 'pla
 | `MeowMoney/Views/StatsView.swift` | 統計：月結餘、分類佔比長條 |
 | `MeowMoney/Views/Components/CatFaceView.swift` | 吉祥物「錢錢貓」，純 SwiftUI 形狀繪製 |
 | `MeowMoney/Theme/CuteTheme.swift` | 配色、圓角、字體、動畫參數 |
-| `MeowMoneyTests/` | 解析邏輯的單元測試（60 項斷言） |
+| `MeowMoney/Views/RootTabView.swift` | 底部膠囊分頁列與三個分頁的切換 |
+| `MeowMoney/Views/Components/SharedComponents.swift` | 分類膠囊、帳目列、音量波形、空狀態 |
+| `MeowMoney/Models/PreviewData.swift` | Xcode Preview 用的記憶體假資料 |
+| `MeowMoney/PrivacyInfo.xcprivacy` | 隱私清單，宣告不追蹤、不蒐集資料 |
+| `MeowMoneyTests/` | 解析邏輯的單元測試（19 個測試、61 項斷言） |
 
 ---
 
@@ -88,6 +93,18 @@ xcodebuild test -project MeowMoney.xcodeproj -scheme MeowMoney -destination 'pla
 任意尺寸都清晰、可以隨狀態變表情（待機／聆聽／成功／沒聽懂）、不佔 app 體積。
 
 ---
+
+## 目前的驗證狀態
+
+已實跑驗證（不是「應該可以」）：
+
+- `xcodebuild build` 對 iOS 26.5 模擬器 SDK 建置成功，零 error 零 warning
+- `xcodebuild test` 在 iPhone 17 Pro Max（iOS 26.5）模擬器跑完 **19 個測試、0 失敗**
+- app 實際安裝啟動，三個分頁都渲染過並截圖確認（首頁、帳本、統計）
+- SwiftData 存取 `Decimal` 金額另外寫程式驗過：小數不失真、加總無浮點誤差
+- App 圖示 1024×1024、RGB 無 alpha（有 alpha 會被 App Store 上傳擋下）
+
+尚未驗證：實機上的語音辨識行為（見下方限制 1）、上架流程本身。
 
 ## 已知限制
 
