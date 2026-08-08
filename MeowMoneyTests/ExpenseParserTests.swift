@@ -115,4 +115,59 @@ final class ExpenseParserTests: XCTestCase {
         XCTAssertEqual(result.amount, 500)
         XCTAssertEqual(result.note, ExpenseCategory.other.title)
     }
+
+    // MARK: - 實機回歸案例
+    //
+    // 以下五句是 2026-08-08 在 iPhone 13 Pro Max 實機用語音講出來的原話，
+    // 直接取自裝置上的資料庫。其中三句當時解析錯誤，修正後在此固定住，
+    // 避免之後改關鍵字表又改回去。
+
+    func testRealDevice_lunch() {
+        let result = parse("今天午餐1280")
+        XCTAssertEqual(result.amount, 1280)
+        XCTAssertEqual(result.category, .food)
+        XCTAssertEqual(result.note, "午餐")
+    }
+
+    func testRealDevice_movieWithFriend() {
+        let result = parse("跟朋友看電影380")
+        XCTAssertEqual(result.amount, 380)
+        XCTAssertEqual(result.category, .entertainment)
+        XCTAssertEqual(result.note, "跟朋友看電影")
+    }
+
+    /// 當時錯在：分類落到「其他」，而且備註殘留一個 $。
+    func testRealDevice_zaraWithDollarSign() {
+        let result = parse("買Zara $170")
+        XCTAssertEqual(result.amount, 170)
+        XCTAssertEqual(result.category, .shopping)
+        XCTAssertEqual(result.note, "買zara")
+        XCTAssertFalse(result.note.contains("$"), "備註不該殘留貨幣符號")
+    }
+
+    /// 當時錯在：判成支出，而且「錢」被當贅詞吃掉變成「撿到」。
+    func testRealDevice_foundMoney() {
+        let result = parse("今天撿到錢加$100")
+        XCTAssertEqual(result.amount, 100)
+        XCTAssertTrue(result.isIncome)
+        XCTAssertTrue(result.note.contains("錢"), "「撿到錢」的「錢」不該被當成贅詞刪掉")
+        XCTAssertFalse(result.note.contains("$"))
+    }
+
+    /// 當時錯在：分類落到「其他」，而且備註殘留一個 $。
+    func testRealDevice_traditionalMarket() {
+        let result = parse("今天早上去菜市場買$240")
+        XCTAssertEqual(result.amount, 240)
+        XCTAssertEqual(result.category, .food)
+        XCTAssertFalse(result.note.contains("$"))
+    }
+
+    /// NT$ 這種寫法也要整串吃掉。
+    func testNewTaiwanDollarPrefix() {
+        let result = parse("買咖啡NT$85")
+        XCTAssertEqual(result.amount, 85)
+        XCTAssertEqual(result.category, .food)
+        XCTAssertFalse(result.note.contains("$"))
+        XCTAssertFalse(result.note.lowercased().contains("nt"))
+    }
 }

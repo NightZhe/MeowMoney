@@ -11,7 +11,7 @@
   （`TARGETED_DEVICE_FAMILY = "1"`；設成 iPad 相容的話上架要另外準備 iPad 截圖）
 - 技術：SwiftUI + SwiftData + Speech Framework
 - 資料：**全部留在裝置上**，沒有後端、沒有帳號、不上傳雲端
-- Bundle ID：`com.harrylee.meowmoney`
+- Bundle ID：`io.github.nightzhe.meowmoney`
   （上架前可改：Xcode → TARGETS `MeowMoney` → Signing & Capabilities → Bundle Identifier。
   一旦上架就不能再改。）
 
@@ -109,13 +109,19 @@ xcodebuild test -project MeowMoney.xcodeproj -scheme MeowMoney -destination 'pla
 - app 實際安裝啟動，三個分頁都渲染過並截圖確認（首頁、帳本、統計）
 - SwiftData 存取 `Decimal` 金額另外寫程式驗過：小數不失真、加總無浮點誤差
 - App 圖示 1024×1024、RGB 無 alpha（有 alpha 會被 App Store 上傳擋下）
+- **實機語音辨識已驗證**（iPhone 13 Pro Max / iOS 26.5.2，2026-08-08）：
+  實際口說五句話都成功轉成文字並存成帳目，連英文品牌名與 `$` 符號都辨識正確；
+  裝置上出現 `Library/Caches/com.apple.speech.localspeechrecognition`，
+  代表走的是**裝置端離線辨識**，語音沒有離開手機。
+  該次測試同時暴露三個解析 bug（貨幣符號殘留、「錢」被誤刪、品牌與菜市場未分類），
+  均已修正並寫成回歸測試（見 `MeowMoneyTests` 的「實機回歸案例」）。
 
-尚未驗證：實機上的語音辨識行為（見下方限制 1）、上架流程本身。
+尚未驗證：上架流程本身。
 
 ## 已知限制
 
-1. **語音辨識需要實機測試**：模擬器的麥克風輸入不穩定，`SpeechRecognizer` 的
-   完整行為（音量波形、停頓自動收工）尚未在實機驗證過。
+1. **停頓自動收工與音量波形尚未逐項確認**：實機測試已證實辨識與存檔可用，
+   但 1.6 秒靜音自動結束、音量波形跟隨這兩項互動細節還沒逐一比對過。
 2. **裝置端辨識的可用性視機型與語言包而定**：`supportsOnDeviceRecognition` 為 false 時
    會退回 Apple 伺服器辨識（需要網路，語音會送到 Apple）。這點必須寫進隱私政策。
 3. **沒有 iCloud 同步**：換手機資料不會跟著走。要做的話是加 `.modelContainer` 的

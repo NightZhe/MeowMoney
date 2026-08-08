@@ -193,14 +193,23 @@ enum ExpenseParser {
                 }
             }
 
-            // 前面帶 $ 也算金額訊號
-            if i > 0, chars[i - 1] == "$" { hasCurrency = true }
+            // 前面帶 $ 也算金額訊號，而且要連 $ 一起吃掉，
+            // 否則「買Zara $170」的備註會殘留一個孤零零的 $。
+            var startIndex = i
+            if startIndex > 0, chars[startIndex - 1] == "$" {
+                hasCurrency = true
+                startIndex -= 1
+                // 一併吃掉 "NT$" 的 NT（正規化時已轉小寫）
+                if startIndex >= 2, chars[startIndex - 2] == "n", chars[startIndex - 1] == "t" {
+                    startIndex -= 2
+                }
+            }
 
             if let value, value > 0 {
                 candidates.append(
                     AmountCandidate(
                         value: value,
-                        start: i,
+                        start: startIndex,
                         end: consumedEnd,
                         hasCurrency: hasCurrency,
                         isCounter: isCounter
@@ -269,7 +278,9 @@ enum ExpenseParser {
         "幫我記一筆", "幫我記帳", "記一筆", "記帳", "記下", "幫我",
         "總共花了", "一共花了", "總共", "一共", "花了", "花費", "支出", "收入",
         "付了", "刷了", "大概", "差不多", "左右", "而已", "然後", "還有",
-        "塊錢", "元整", "元", "塊", "圓", "錢", "花", "共", "了", "的", "喔", "啦", "吧", "嗎", "呢"
+        // 不放單獨的「錢」：它會把「撿到錢」吃成「撿到」。
+        // 數字後面的「元/塊/錢」已由 extractAmount 的幣別後綴處理掉了。
+        "塊錢", "元整", "元", "塊", "圓", "花", "共", "了", "的", "喔", "啦", "吧", "嗎", "呢"
     ]
 
     static func makeNote(from text: String, fallback: ExpenseCategory, isIncome: Bool) -> String {
