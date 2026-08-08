@@ -120,4 +120,4 @@ Questions about this policy can be raised via GitHub Issues:
 
 ---
 
-*App 的開發說明文件見 [DEVELOPMENT.md](DEVELOPMENT.md)，上架流程見 [UPLOAD-GUIDE.md](UPLOAD-GUIDE.md)。*
+*App 的開發說明文件見 [DEVELOPMENT.md](DEVELOPMENT.md)。*
