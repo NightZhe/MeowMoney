@@ -119,9 +119,3 @@ xcodebuild test -project MeowMoney.xcodeproj -scheme MeowMoney -destination 'pla
 3. **沒有 iCloud 同步**：換手機資料不會跟著走。要做的話是加 `.modelContainer` 的
    CloudKit 設定＋App Group entitlement。
 4. **沒有預算功能**：目前只記錄與統計，沒有「本月上限」提醒。
-
----
-
-## 上架
-
-見 [UPLOAD-GUIDE.md](UPLOAD-GUIDE.md)。
