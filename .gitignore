@@ -14,3 +14,7 @@ DerivedData/
 # 系統
 .DS_Store
 build-release/
+
+# 個人作業文件，保留在本機不進版控
+UPLOAD-GUIDE.md
+APPSTORE-COPY.md
