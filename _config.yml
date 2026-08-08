@@ -1,0 +1,14 @@
+title: 喵喵記帳 MeowMoney
+description: 隱私政策 Privacy Policy
+theme: jekyll-theme-cayman
+lang: zh-Hant
+
+# 只讓隱私政策成為網站首頁，其餘專案文件不需要被 Jekyll 產生成頁面。
+exclude:
+  - MeowMoney/
+  - MeowMoneyTests/
+  - MeowMoney.xcodeproj/
+  - screenshots/
+  - build/
+  - DEVELOPMENT.md
+  - UPLOAD-GUIDE.md

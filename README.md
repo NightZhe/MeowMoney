@@ -1,123 +1,123 @@
-# 喵喵記帳 MeowMoney
+# 喵喵記帳 MeowMoney 隱私政策
 
-可愛風格的 iOS 語音記帳 app。按一下麥克風，說「午餐便當一百二」，
-就自動解析成 **金額 120 / 分類 餐飲 / 備註 午餐便當**，確認後存進帳本。
+**生效日期：2026 年 8 月 8 日**
 
-- 平台：iOS 17.0 以上，**僅 iPhone**、僅直式
-  （`TARGETED_DEVICE_FAMILY = "1"`；設成 iPad 相容的話上架要另外準備 iPad 截圖）
-- 技術：SwiftUI + SwiftData + Speech Framework
-- 資料：**全部留在裝置上**，沒有後端、沒有帳號、不上傳雲端
-- Bundle ID：`com.harrylee.meowmoney`（上架前可改，見 `UPLOAD-GUIDE.md`）
+喵喵記帳（MeowMoney，以下稱「本 App」）是一款 iOS 語音記帳應用程式。
+本頁說明本 App 如何處理你的資料。**簡短版：本 App 沒有伺服器，你的帳目只存在你自己的手機裡。**
 
 ---
 
-## 快速開始
+## 一、本 App 蒐集哪些資料
 
-```bash
-open /Users/ben/harryaiagent/MeowMoney/MeowMoney.xcodeproj
-```
+**不蒐集任何資料。**
 
-在 Xcode 左上角選一台 iPhone 模擬器，按 ⌘R 執行。
+本 App 沒有後端伺服器，不需要註冊帳號，也沒有整合任何廣告或分析追蹤服務。
+開發者無法看到、取得或還原你的任何使用資料。
 
-> **注意**：語音辨識在模擬器上不一定抓得到麥克風。要測語音功能，
-> 請接實機執行；模擬器可以用畫面下方的「或直接打字」欄位測試解析邏輯。
+## 二、帳目資料的儲存方式
 
-跑測試：
+1. 你建立的每一筆帳目（金額、分類、備註、日期）都**儲存在你裝置本機的資料庫**中，
+   **開發者無法存取，也不會上傳到任何伺服器**。
+2. 這些資料只會隨著 iOS 系統的裝置備份機制（iCloud 備份或電腦備份）一併備份，
+   該備份由 Apple 與你自己控管，開發者無法讀取。
+3. 你可以在 App 內刪除任何一筆帳目；刪除 App 即會一併移除全部本機資料。
 
-```bash
-xcodebuild test -project MeowMoney.xcodeproj -scheme MeowMoney -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
-```
+## 三、麥克風與語音辨識
 
----
+1. 本 App 會請求**麥克風**與**語音辨識**權限。
+   **這兩項權限的用途，僅用於把你說的話轉換成文字，以便建立帳目**，不作任何其他用途。
+2. 本 App 不會錄製、保存或傳送音訊檔案。語音只在辨識當下即時處理。
+3. **語音辨識在裝置不支援離線辨識時，會由 Apple 的語音辨識服務處理，
+   此時語音資料會傳送給 Apple。** 這是 iOS 系統內建語音辨識（Speech framework）的運作方式；
+   該情況下 Apple 對這些資料的處理，適用 Apple 的隱私政策：
+   <https://www.apple.com/legal/privacy/>
+4. 本 App 會優先使用裝置端（離線）辨識；只有在你的裝置或語言不支援離線辨識時，
+   才會退回使用 Apple 的伺服器辨識。
+5. 你可以拒絕這兩項權限。拒絕後語音記帳功能無法使用，但你仍然可以用打字方式記帳，
+   帳本與統計功能完全不受影響。
 
-## 檔案地圖
+## 四、第三方服務
 
-| 路徑 | 做什麼 |
-|------|--------|
-| `MeowMoney/MeowMoneyApp.swift` | App 進入點，掛上 SwiftData container |
-| `MeowMoney/Models/Expense.swift` | 一筆帳的資料模型（`@Model`） |
-| `MeowMoney/Models/ExpenseCategory.swift` | 10 個分類＋每個分類的語音關鍵字表 |
-| `MeowMoney/Services/ChineseNumberParser.swift` | 中文數字轉數值（含台灣口語省略說法） |
-| `MeowMoney/Services/ExpenseParser.swift` | 一句話 → 金額／分類／備註／日期／收支 |
-| `MeowMoney/Services/SpeechRecognizer.swift` | zh-TW 即時語音辨識，停頓 1.6 秒自動收工 |
-| `MeowMoney/Views/HomeView.swift` | 首頁：今日花費、大麥克風按鈕、最近的帳 |
-| `MeowMoney/Views/EntrySheet.swift` | 語音／手動新增的確認編輯面板 |
-| `MeowMoney/Views/RecordsView.swift` | 帳本：依日期分組、左滑刪除 |
-| `MeowMoney/Views/StatsView.swift` | 統計：月結餘、分類佔比長條 |
-| `MeowMoney/Views/Components/CatFaceView.swift` | 吉祥物「錢錢貓」，純 SwiftUI 形狀繪製 |
-| `MeowMoney/Theme/CuteTheme.swift` | 配色、圓角、字體、動畫參數 |
-| `MeowMoney/Views/RootTabView.swift` | 底部膠囊分頁列與三個分頁的切換 |
-| `MeowMoney/Views/Components/SharedComponents.swift` | 分類膠囊、帳目列、音量波形、空狀態 |
-| `MeowMoney/Models/PreviewData.swift` | Xcode Preview 用的記憶體假資料 |
-| `MeowMoney/PrivacyInfo.xcprivacy` | 隱私清單，宣告不追蹤、不蒐集資料 |
-| `MeowMoneyTests/` | 解析邏輯的單元測試（19 個測試、61 項斷言） |
+本 App **未整合任何第三方 SDK**，包含但不限於廣告、分析、當機回報、社群登入服務。
+唯一涉及的外部服務是上述第三點所說的 Apple 內建語音辨識。
 
----
+## 五、兒童隱私
 
-## 語音聽得懂哪些說法
+本 App 不會蒐集任何個人資料，因此也不會蒐集兒童的個人資料。
 
-解析器針對台灣口語設計，以下都測過（見 `MeowMoneyTests/`）：
+## 六、你的權利
 
-| 你說 | 解析結果 |
-|------|----------|
-| 午餐便當一百二 | 120・餐飲・午餐便當 |
-| 搭計程車250元 | 250・交通 |
-| 買了兩個便當共240 | 240・餐飲（「兩個」的 2 不會被當成金額） |
-| 咖啡１２０元 | 120・餐飲（全形數字自動轉換） |
-| 買球鞋 3,280 元 | 3280・購物（千分位自動處理） |
-| 薪水入帳十三萬 | 130000・**收入** |
-| 昨天晚餐吃拉麵180 | 180・餐飲・日期自動退一天 |
-| 前天加油1200 | 1200・交通・日期退兩天 |
-| 7月5號看電影390 | 390・娛樂・日期 7/5 |
-| 幫我記帳 今天花了 星巴克 165 元 | 165・餐飲・星巴克（贅詞自動清掉） |
+由於開發者不持有你的任何資料，因此沒有可供查詢、更正或匯出的個人資料。
+你對資料擁有完全控制權：在 App 內刪除帳目，或刪除 App 以清除全部資料。
 
-**台灣口語的數字省略也支援**：
-`一百二` = 120、`兩千五` = 2500、`一萬二` = 12000。
-說「一百**零**二」則正確解析成 102（「零」會擋掉省略推算）。
+## 七、政策變更
 
-解析不準時不會硬存——所有結果都會先進確認面板，金額、分類、備註、日期都能手動改。
+本政策如有修改，會更新本頁內容與頁首的生效日期。
+
+## 八、聯絡方式
+
+對本政策有任何疑問，請至本專案的 GitHub Issues 提出：
+<https://github.com/NightZhe/MeowMoney/issues>
 
 ---
 
-## 設計決策
+# Privacy Policy (English)
 
-**為什麼不接 LLM API 做語意解析？**
-規則式解析在裝置上跑，零延遲、零成本、離線可用，而且使用者的消費紀錄不會離開手機。
-記帳這種高頻小動作，等 1 秒 API 回應的體驗會比打字還差。
-代價是遇到沒收錄的說法會落到「其他」分類——所以確認面板是必要的，不是多餘的一步。
+**Effective date: August 8, 2026**
 
-**為什麼金額用 `Decimal` 而不是 `Double`？**
-避免浮點誤差累積。帳目加總是這個 app 的核心輸出，不能有 0.1 + 0.2 的問題。
+MeowMoney is an iOS voice-driven expense tracking app. **Short version: the app has no server,
+and your records never leave your device.**
 
-**為什麼吉祥物用 SwiftUI 形狀畫而不是圖片？**
-任意尺寸都清晰、可以隨狀態變表情（待機／聆聽／成功／沒聽懂）、不佔 app 體積。
+## 1. Data collection
+
+**None.** MeowMoney has no backend, requires no account, and integrates no advertising or
+analytics SDKs. The developer cannot see, retrieve, or reconstruct any of your data.
+
+## 2. How your records are stored
+
+Every entry you create (amount, category, note, date) is stored **in a local database on your
+device**. The developer has no access to it, and it is never uploaded to any server. The data is
+included in your iOS device backup (iCloud or computer), which is controlled by you and Apple and
+cannot be read by the developer. Deleting the app removes all local data.
+
+## 3. Microphone and speech recognition
+
+MeowMoney requests **microphone** and **speech recognition** permissions. These are used **solely
+to convert your speech into text so an expense entry can be created**, and for no other purpose.
+No audio files are recorded, stored, or transmitted by the app.
+
+**When your device does not support on-device speech recognition, recognition is performed by
+Apple's speech recognition service, and your voice data is sent to Apple.** This is how the
+built-in iOS Speech framework works; Apple's handling of that data is governed by Apple's privacy
+policy at <https://www.apple.com/legal/privacy/>. MeowMoney prefers on-device recognition and only
+falls back to Apple's servers when on-device recognition is unavailable for your device or language.
+
+You may decline both permissions. Voice entry will then be unavailable, but you can still add
+entries by typing, and the ledger and statistics features are unaffected.
+
+## 4. Third-party services
+
+MeowMoney integrates **no third-party SDKs** of any kind. The only external service involved is
+Apple's built-in speech recognition described above.
+
+## 5. Children's privacy
+
+MeowMoney collects no personal data, and therefore collects no personal data from children.
+
+## 6. Your rights
+
+Because the developer holds none of your data, there is nothing to request, correct, or export.
+You have full control: delete entries in the app, or delete the app to erase everything.
+
+## 7. Changes to this policy
+
+Changes will be published on this page along with an updated effective date.
+
+## 8. Contact
+
+Questions about this policy can be raised via GitHub Issues:
+<https://github.com/NightZhe/MeowMoney/issues>
 
 ---
 
-## 目前的驗證狀態
-
-已實跑驗證（不是「應該可以」）：
-
-- `xcodebuild build` 對 iOS 26.5 模擬器 SDK 建置成功，零 error 零 warning
-- `xcodebuild test` 在 iPhone 17 Pro Max（iOS 26.5）模擬器跑完 **19 個測試、0 失敗**
-- app 實際安裝啟動，三個分頁都渲染過並截圖確認（首頁、帳本、統計）
-- SwiftData 存取 `Decimal` 金額另外寫程式驗過：小數不失真、加總無浮點誤差
-- App 圖示 1024×1024、RGB 無 alpha（有 alpha 會被 App Store 上傳擋下）
-
-尚未驗證：實機上的語音辨識行為（見下方限制 1）、上架流程本身。
-
-## 已知限制
-
-1. **語音辨識需要實機測試**：模擬器的麥克風輸入不穩定，`SpeechRecognizer` 的
-   完整行為（音量波形、停頓自動收工）尚未在實機驗證過。
-2. **裝置端辨識的可用性視機型與語言包而定**：`supportsOnDeviceRecognition` 為 false 時
-   會退回 Apple 伺服器辨識（需要網路，語音會送到 Apple）。這點必須寫進隱私政策。
-3. **沒有 iCloud 同步**：換手機資料不會跟著走。要做的話是加 `.modelContainer` 的
-   CloudKit 設定＋App Group entitlement。
-4. **沒有預算功能**：目前只記錄與統計，沒有「本月上限」提醒。
-
----
-
-## 上架
-
-見 [UPLOAD-GUIDE.md](UPLOAD-GUIDE.md)。
+*App 的開發說明文件見 [DEVELOPMENT.md](DEVELOPMENT.md)，上架流程見 [UPLOAD-GUIDE.md](UPLOAD-GUIDE.md)。*
