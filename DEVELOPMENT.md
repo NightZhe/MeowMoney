@@ -11,7 +11,9 @@
   （`TARGETED_DEVICE_FAMILY = "1"`；設成 iPad 相容的話上架要另外準備 iPad 截圖）
 - 技術：SwiftUI + SwiftData + Speech Framework
 - 資料：**全部留在裝置上**，沒有後端、沒有帳號、不上傳雲端
-- Bundle ID：`com.harrylee.meowmoney`（上架前可改，見 `UPLOAD-GUIDE.md`）
+- Bundle ID：`com.harrylee.meowmoney`
+  （上架前可改：Xcode → TARGETS `MeowMoney` → Signing & Capabilities → Bundle Identifier。
+  一旦上架就不能再改。）
 
 ---
 

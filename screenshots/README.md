@@ -6,4 +6,10 @@
 畫面中的帳目是為了截圖臨時塞的示範資料，不是真實消費紀錄。
 上架前建議自己再挑一組更貼近真實使用的數字重拍。
 
-重拍方式見 `../UPLOAD-GUIDE.md` 第 5 步。
+重拍方式：用 iPhone 17 Pro Max（或任一 6.9 吋機型）模擬器跑 app，在 Simulator 按 ⌘S，
+或用指令直接存檔：
+
+```bash
+xcrun simctl io booted screenshot ~/Desktop/meowmoney-01.png
+```
+
