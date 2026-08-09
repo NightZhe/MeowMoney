@@ -1,0 +1,10 @@
+// 範本檔。複製成 Signing.xcconfig（同目錄）後填入自己的 Team ID。
+//
+//   cp Signing.xcconfig.example Signing.xcconfig
+//
+// Signing.xcconfig 已被 .gitignore 排除，填進去的 Team ID 不會進版控。
+// 沒有這個檔案也能建置，只是 Xcode 會在 Signing & Capabilities 顯示
+// 「requires a development team」，按 ⌘R 會失敗——命令列則可以用
+// xcodebuild ... DEVELOPMENT_TEAM=你的TeamID 繞過。
+
+DEVELOPMENT_TEAM = YOUR_TEAM_ID_HERE

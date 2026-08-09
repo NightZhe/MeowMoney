@@ -25,6 +25,15 @@ open MeowMoney.xcodeproj
 
 在 Xcode 左上角選一台 iPhone 模擬器，按 ⌘R 執行。
 
+**要裝到實機的話**，先建立本機簽章設定（只需做一次，這個檔案不進版控）：
+
+```bash
+cp Signing.xcconfig.example Signing.xcconfig
+```
+
+再把裡面的 `DEVELOPMENT_TEAM` 換成自己的 Team ID。沒有這個檔案時，
+Signing & Capabilities 會顯示「requires a development team」，模擬器仍可正常建置。
+
 > **注意**：語音辨識在模擬器上不一定抓得到麥克風。要測語音功能，
 > 請接實機執行；模擬器可以用畫面下方的「或直接打字」欄位測試解析邏輯。
 

@@ -19,3 +19,6 @@ build-release/
 UPLOAD-GUIDE.md
 APPSTORE-COPY.md
 build-device/
+
+# 本機簽章設定（含 Team ID），不進版控
+Signing.xcconfig

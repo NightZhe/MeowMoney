@@ -19,6 +19,7 @@
 /* Begin PBXFileReference section */
 		FEED000000000000000000C1 /* MeowMoney.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MeowMoney.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FEED000000000000000000C2 /* MeowMoneyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MeowMoneyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FEED00000000000000000121 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -55,6 +56,7 @@
 		FEED000000000000000000A2 = {
 			isa = PBXGroup;
 			children = (
+				FEED00000000000000000121 /* Signing.xcconfig */,
 				FEED000000000000000000D1 /* MeowMoney */,
 				FEED000000000000000000D2 /* MeowMoneyTests */,
 				FEED000000000000000000A3 /* Products */,
@@ -203,6 +205,7 @@
 /* Begin XCBuildConfiguration section */
 		FEED00000000000000000101 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FEED00000000000000000121 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -245,6 +248,7 @@
 		};
 		FEED00000000000000000102 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FEED00000000000000000121 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
