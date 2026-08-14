@@ -1,4 +1,4 @@
-# 喵喵記帳 MeowMoney — 開發說明
+# 喵嗚記帳 MeowMoney — 開發說明
 
 > 本專案的 `README.md` 是**隱私政策**（供 App Store 使用，透過 GitHub Pages 發布於
 > <https://nightzhe.github.io/MeowMoney/>）。開發相關說明在本檔。

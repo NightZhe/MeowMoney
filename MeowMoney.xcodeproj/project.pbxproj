@@ -292,7 +292,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "喵喵記帳";
+				INFOPLIST_KEY_CFBundleDisplayName = "喵嗚記帳";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "需要使用麥克風，才能聽你說話並自動記帳。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要語音辨識，才能把你說的話轉成帳目金額與分類。";
@@ -323,7 +323,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "喵喵記帳";
+				INFOPLIST_KEY_CFBundleDisplayName = "喵嗚記帳";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "需要使用麥克風，才能聽你說話並自動記帳。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要語音辨識，才能把你說的話轉成帳目金額與分類。";

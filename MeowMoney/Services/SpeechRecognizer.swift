@@ -49,7 +49,7 @@ final class SpeechRecognizer {
             }
         }
         guard speechGranted else {
-            state = .denied("需要「語音辨識」權限才能聽你說話。請到 設定 › 喵喵記帳 打開。")
+            state = .denied("需要「語音辨識」權限才能聽你說話。請到 設定 › 喵嗚記帳 打開。")
             return false
         }
 
@@ -59,7 +59,7 @@ final class SpeechRecognizer {
             }
         }
         guard micGranted else {
-            state = .denied("需要「麥克風」權限才能錄音。請到 設定 › 喵喵記帳 打開。")
+            state = .denied("需要「麥克風」權限才能錄音。請到 設定 › 喵嗚記帳 打開。")
             return false
         }
 
