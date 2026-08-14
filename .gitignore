@@ -23,3 +23,8 @@ build-device/
 # 本機簽章設定（含 Team ID），不進版控
 Signing.xcconfig
 build-verify/
+
+# 上傳設定（含 Team ID），不進版控
+ExportOptions.plist
+build-archive/
+build-export/

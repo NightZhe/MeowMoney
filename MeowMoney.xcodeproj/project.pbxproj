@@ -290,6 +290,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = F7WL42HXND;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "喵嗚記帳";
@@ -309,7 +310,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.nightzhe.meowmoney;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = "1";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -321,6 +322,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = F7WL42HXND;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "喵嗚記帳";
@@ -340,7 +342,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.nightzhe.meowmoney;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = "1";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -355,7 +357,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.nightzhe.meowmoney.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = "1";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MeowMoney.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MeowMoney";
 			};
 			name = Debug;
@@ -371,7 +373,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.nightzhe.meowmoney.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = "1";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MeowMoney.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MeowMoney";
 			};
 			name = Release;
