@@ -65,7 +65,7 @@ xcodebuild test -project MeowMoney.xcodeproj -scheme MeowMoney -destination 'pla
 | `MeowMoney/Views/Components/SharedComponents.swift` | 分類膠囊、帳目列、音量波形、空狀態 |
 | `MeowMoney/Models/PreviewData.swift` | Xcode Preview 用的記憶體假資料 |
 | `MeowMoney/PrivacyInfo.xcprivacy` | 隱私清單，宣告不追蹤、不蒐集資料 |
-| `MeowMoneyTests/` | 解析邏輯的單元測試（19 個測試、61 項斷言） |
+| `MeowMoneyTests/` | 解析邏輯的單元測試（29 個測試） |
 
 ---
 
@@ -85,6 +85,8 @@ xcodebuild test -project MeowMoney.xcodeproj -scheme MeowMoney -destination 'pla
 | 前天加油1200 | 1200・交通・日期退兩天 |
 | 7月5號看電影390 | 390・娛樂・日期 7/5 |
 | 幫我記帳 今天花了 星巴克 165 元 | 165・餐飲・星巴克（贅詞自動清掉） |
+| 男友給我 5000 | 5000・**收入** |
+| 我給男友 5000 | 5000・支出（同一個「給」，語序不同方向就相反） |
 
 **台灣口語的數字省略也支援**：
 `一百二` = 120、`兩千五` = 2500、`一萬二` = 12000。
@@ -114,7 +116,7 @@ xcodebuild test -project MeowMoney.xcodeproj -scheme MeowMoney -destination 'pla
 已實跑驗證（不是「應該可以」）：
 
 - `xcodebuild build` 對 iOS 26.5 模擬器 SDK 建置成功，零 error 零 warning
-- `xcodebuild test` 在 iPhone 17 Pro Max（iOS 26.5）模擬器跑完 **19 個測試、0 失敗**
+- `xcodebuild test` 在 iPhone 17 Pro Max（iOS 26.5）模擬器跑完 **29 個測試、0 失敗**
 - app 實際安裝啟動，三個分頁都渲染過並截圖確認（首頁、帳本、統計）
 - SwiftData 存取 `Decimal` 金額另外寫程式驗過：小數不失真、加總無浮點誤差
 - App 圖示 1024×1024、RGB 無 alpha（有 alpha 會被 App Store 上傳擋下）

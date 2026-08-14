@@ -243,8 +243,40 @@ enum ExpenseParser {
 
     // MARK: - 收入 / 分類
 
+    /// 錢流向「我」的說法。中文靠語序決定方向：「男友給我」是進帳，「我給男友」是支出。
+    private static let inboundMarkers = [
+        "給我", "給了我", "匯給我", "轉給我", "轉帳給我", "匯款給我", "包給我",
+        "還我", "還給我", "退我", "退給我", "拿給我", "塞給我", "贊助我", "資助我"
+    ]
+
+    /// 錢流出去的說法。這些要壓過下面的「人名＋給」推論。
+    private static let outboundMarkers = [
+        "我給", "我付", "我轉", "我匯", "我請", "我包", "我借",
+        "付給", "轉給", "匯給", "借給", "還給", "包給", "拿給", "送給"
+    ]
+
+    /// 會出現在「X 給我錢」裡的人。用來判斷「男友給5000」這種省略了「我」的說法。
+    private static let personWords = [
+        "男友", "女友", "男朋友", "女朋友", "老公", "老婆", "先生", "太太",
+        "爸", "媽", "爸爸", "媽媽", "父母", "阿公", "阿嬤", "爺爺", "奶奶",
+        "哥", "姊", "弟", "妹", "哥哥", "姊姊", "弟弟", "妹妹",
+        "老闆", "公司", "客戶", "同事", "朋友", "家人", "長輩", "叔叔", "阿姨", "親戚"
+    ]
+
     static func detectIncome(in text: String) -> Bool {
-        ExpenseCategory.income.keywords.contains { text.contains($0) }
+        // 1. 明確的收入詞（薪水、獎金、退款…）最優先
+        if ExpenseCategory.income.keywords.contains(where: { text.contains($0) }) { return true }
+
+        // 2. 明確流向我的說法。要先於第 3 步，否則「還給我」會被「還給」誤判成支出
+        if inboundMarkers.contains(where: { text.contains($0) }) { return true }
+
+        // 3. 明確流出去的說法
+        if outboundMarkers.contains(where: { text.contains($0) }) { return false }
+
+        // 4. 「人名 + 給」而且沒有出現「我給」：省略主詞的進帳，例如「男友給5000」
+        if personWords.contains(where: { text.contains($0 + "給") }) { return true }
+
+        return false
     }
 
     /// 取命中關鍵字最長（最具體）的分類；同長度時取命中數量多的。

@@ -162,6 +162,43 @@ final class ExpenseParserTests: XCTestCase {
         XCTAssertFalse(result.note.contains("$"))
     }
 
+    // MARK: - 金錢流向
+    //
+    // 中文靠語序決定錢的方向：「男友給我」是進帳，「我給男友」是支出。
+    // 原本只比對收入關鍵字，兩種都判成支出。
+
+    func testSomeoneGivesMeIsIncome() {
+        XCTAssertTrue(parse("男友給我5000").isIncome)
+        XCTAssertTrue(parse("媽媽給我2000").isIncome)
+        XCTAssertTrue(parse("老婆轉給我一萬").isIncome)
+        XCTAssertTrue(parse("公司退我停車費300").isIncome)
+        XCTAssertTrue(parse("爸爸包給我紅包6000").isIncome)
+    }
+
+    /// 省略「我」的說法：「男友給5000」在口語裡就是他給我。
+    func testPersonGivesWithoutObjectIsIncome() {
+        let result = parse("男友給5000")
+        XCTAssertEqual(result.amount, 5000)
+        XCTAssertTrue(result.isIncome)
+        XCTAssertEqual(result.category, .income)
+    }
+
+    /// 反方向必須維持支出，否則修一個 bug 會製造另一個。
+    func testIGiveSomeoneIsExpense() {
+        XCTAssertFalse(parse("我給男友5000").isIncome)
+        XCTAssertFalse(parse("給男友5000").isIncome)
+        XCTAssertFalse(parse("我轉給老婆一萬").isIncome)
+        XCTAssertFalse(parse("我還朋友500").isIncome)
+        XCTAssertFalse(parse("包紅包給朋友3600").isIncome)
+        XCTAssertFalse(parse("送給女友禮物2000").isIncome)
+    }
+
+    /// 「還給我」含有「還給」，方向判斷的順序不能讓它被誤判成支出。
+    func testInboundBeatsOutboundWhenBothMatch() {
+        XCTAssertTrue(parse("朋友還給我1200").isIncome)
+        XCTAssertFalse(parse("我還給朋友1200").isIncome)
+    }
+
     /// NT$ 這種寫法也要整串吃掉。
     func testNewTaiwanDollarPrefix() {
         let result = parse("買咖啡NT$85")
