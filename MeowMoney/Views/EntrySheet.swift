@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import Speech
+import AVFoundation
 
 /// 可編輯的一筆帳（尚未寫入資料庫）。
 struct EntryDraft {
@@ -39,6 +41,7 @@ struct EntrySheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var recognizer = SpeechRecognizer()
     @State private var stage: Stage = .listening
@@ -49,7 +52,7 @@ struct EntrySheet: View {
 
     var body: some View {
         ZStack {
-            Cute.background.ignoresSafeArea()
+            MM.bgBase.ignoresSafeArea()
 
             switch stage {
             case .listening: listeningView
@@ -59,9 +62,15 @@ struct EntrySheet: View {
         }
         .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
-        .presentationCornerRadius(32)
+        .presentationCornerRadius(MM.R.xl)
         .onAppear(perform: setUp)
         .onDisappear { recognizer.cancel() }
+        .onChange(of: scenePhase) { _, newPhase in
+            // 聆聽中被切到背景（切別的 App／接電話）：不能假裝還在錄音，先取消收工，
+            // 回前景後畫面停在 .listening 但顯示「已暫停」文案（見 promptText）。
+            guard newPhase == .background, stage == .listening, recognizer.state.isListening else { return }
+            recognizer.cancel()
+        }
     }
 
     // MARK: - 啟動
@@ -84,16 +93,36 @@ struct EntrySheet: View {
     private func accept(text: String) {
         let parsed = ExpenseParser.parse(text)
         draft = EntryDraft(parsed: parsed)
-        withAnimation(Cute.bouncy) {
+        withAnimation(MM.bouncy) {
             stage = .editing
             detent = .large
         }
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
     }
 
+    // MARK: - 權限
+
+    /// 系統已經不會再跳權限視窗（使用者拒絕過，且不是「尚未詢問」狀態）。
+    /// 只讀系統權限狀態，不做任何解析/計算——不是商業邏輯，等同讀
+    /// `\.accessibilityReduceMotion` 這類環境值。
+    private var isPermissionPermanentlyDenied: Bool {
+        SFSpeechRecognizer.authorizationStatus() == .denied
+            || AVAudioApplication.shared.recordPermission == .denied
+    }
+
     // MARK: - 聆聽中
 
     private var listeningView: some View {
+        // 用 ScrollView 包住：Dynamic Type 拉到最大時，貓臉＋提示文字＋按鈕＋打字輸入
+        // 疊在一起會超過 .medium detent 的高度，沒有 ScrollView 會被硬擠壓到文字被截斷。
+        ScrollView {
+            listeningContent
+                .frame(maxWidth: .infinity)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private var listeningContent: some View {
         VStack(spacing: 18) {
             Spacer(minLength: 8)
 
@@ -106,24 +135,42 @@ struct EntrySheet: View {
             SoundWaveView(level: recognizer.level, isActive: recognizer.state.isListening)
 
             Text(promptText)
-                .font(Cute.font(19, .semibold))
-                .foregroundStyle(recognizer.transcript.isEmpty ? Cute.cocoaSoft : Cute.cocoa)
+                .font(MM.font(19, .semibold, relativeTo: .title3))
+                .foregroundStyle(recognizer.transcript.isEmpty ? MM.textSecondary : MM.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
                 .frame(minHeight: 56)
                 .animation(.easeOut(duration: 0.15), value: recognizer.transcript)
 
             if case .denied(let message) = recognizer.state {
-                Text(message)
-                    .font(Cute.captionFont)
-                    .foregroundStyle(Cute.peachDeep)
+                Text(isPermissionPermanentlyDenied ? "請至設定 App 開啟麥克風權限" : message)
+                    .font(MM.font(13, .medium, relativeTo: .footnote))
+                    .foregroundStyle(MM.warning)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 30)
+
+                if isPermissionPermanentlyDenied {
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Text("前往設定")
+                            .font(MM.font(15, .bold, relativeTo: .subheadline))
+                            .foregroundStyle(MM.textOnBrand)
+                            .padding(.horizontal, 22)
+                            .frame(minHeight: 44)
+                            .background(Capsule().fill(MM.brandStrong))
+                    }
+                    .squishy()
+                    .accessibilityLabel("前往設定")
+                    .accessibilityHint("到系統設定開啟喵嗚記帳的麥克風與語音辨識權限")
+                }
             }
             if case .failed(let message) = recognizer.state {
                 Text(message)
-                    .font(Cute.captionFont)
-                    .foregroundStyle(Cute.peachDeep)
+                    .font(MM.font(13, .medium, relativeTo: .footnote))
+                    .foregroundStyle(MM.warning)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 30)
             }
@@ -134,10 +181,11 @@ struct EntrySheet: View {
                     dismiss()
                 } label: {
                     Text("取消")
-                        .font(Cute.font(16, .semibold))
-                        .foregroundStyle(Cute.cocoaSoft)
-                        .frame(width: 92, height: 50)
-                        .background(Capsule().fill(Cute.card))
+                        .font(MM.font(16, .semibold, relativeTo: .callout))
+                        .foregroundStyle(MM.textSecondary)
+                        .padding(.horizontal, 20)
+                        .frame(minWidth: 92, minHeight: 50)
+                        .background(Capsule().fill(MM.surfaceCard))
                 }
                 .squishy()
 
@@ -145,10 +193,12 @@ struct EntrySheet: View {
                     recognizer.stop()
                 } label: {
                     Text(recognizer.state.isListening ? "說完了" : "重新聆聽")
-                        .font(Cute.font(17, .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 150, height: 50)
-                        .background(Capsule().fill(Cute.peach))
+                        .font(MM.font(17, .bold, relativeTo: .headline))
+                        // 原本用白字配淺蜜桃只有 1.99:1，跟 mic 按鈕同一個 bug，一併修正。
+                        .foregroundStyle(MM.textOnBrand)
+                        .padding(.horizontal, 20)
+                        .frame(minWidth: 150, minHeight: 50)
+                        .background(Capsule().fill(MM.brandStrong))
                 }
                 .squishy()
                 .disabled(recognizer.state == .preparing)
@@ -168,29 +218,30 @@ struct EntrySheet: View {
         case .listening: return "說說看：「午餐便當一百二」"
         case .denied: return "沒有權限，可以先用打字的"
         case .failed: return "聽不到聲音，可以先用打字的"
-        case .idle: return "點「重新聆聽」再說一次"
+        case .idle: return "已暫停，點「重新聆聽」繼續"
         }
     }
 
     private var typingFallback: some View {
         HStack(spacing: 10) {
             TextField("或直接打字，例如：計程車 250", text: $typedText)
-                .font(Cute.bodyFont)
+                .font(MM.font(16, .medium, relativeTo: .body))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(Capsule().fill(Cute.card))
+                .background(Capsule().fill(MM.surfaceCard))
                 .submitLabel(.done)
                 .onSubmit(submitTypedText)
 
             Button(action: submitTypedText) {
                 Image(systemName: "arrow.right")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(MM.textOnBrand)
                     .frame(width: 44, height: 44)
-                    .background(Circle().fill(typedText.isEmpty ? Cute.cocoaSoft : Cute.mint))
+                    .background(Circle().fill(typedText.isEmpty ? MM.textSecondary : MM.brandStrong))
             }
             .squishy()
             .disabled(typedText.isEmpty)
+            .accessibilityLabel("送出打字內容")
         }
         .padding(.horizontal, 24)
     }
@@ -214,13 +265,13 @@ struct EntrySheet: View {
                             Image(systemName: "quote.opening")
                                 .font(.system(size: 11))
                             Text(draft.transcript)
-                                .font(Cute.captionFont)
+                                .font(MM.font(13, .medium, relativeTo: .footnote))
                                 .lineLimit(2)
                         }
-                        .foregroundStyle(Cute.cocoaSoft)
+                        .foregroundStyle(MM.textSecondary)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(Capsule().fill(Cute.card.opacity(0.8)))
+                        .background(Capsule().fill(MM.surfaceCard.opacity(0.8)))
                     }
 
                     typeToggle
@@ -230,9 +281,9 @@ struct EntrySheet: View {
                     VStack(alignment: .leading, spacing: 10) {
                         SectionHeader(text: "備註")
                         TextField("例如：跟同事吃飯", text: $draft.note)
-                            .font(Cute.bodyFont)
+                            .font(MM.font(16, .medium, relativeTo: .body))
                             .padding(14)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Cute.card))
+                            .background(RoundedRectangle(cornerRadius: MM.R.md, style: .continuous).fill(MM.surfaceCard))
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -242,7 +293,7 @@ struct EntrySheet: View {
                             .datePickerStyle(.compact)
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Cute.card))
+                            .background(RoundedRectangle(cornerRadius: MM.R.md, style: .continuous).fill(MM.surfaceCard))
                     }
                 }
                 .padding(.horizontal, 22)
@@ -257,45 +308,47 @@ struct EntrySheet: View {
 
     private var typeToggle: some View {
         HStack(spacing: 0) {
-            ForEach([false, true], id: \.self) { income in
+            ForEach([false, true], id: \.self) { incomeOption in
                 Button {
-                    withAnimation(Cute.softPop) {
-                        draft.isIncome = income
-                        draft.category = income ? .income : (draft.category == .income ? .food : draft.category)
+                    withAnimation(MM.softPop) {
+                        draft.isIncome = incomeOption
+                        draft.category = incomeOption ? .income : (draft.category == .income ? .food : draft.category)
                     }
                 } label: {
-                    Text(income ? "收入" : "支出")
-                        .font(Cute.font(16, .bold))
+                    Text(incomeOption ? "收入" : "支出")
+                        .font(MM.font(16, .bold, relativeTo: .callout))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 11)
-                        .foregroundStyle(draft.isIncome == income ? .white : Cute.cocoaSoft)
+                        .foregroundStyle(draft.isIncome == incomeOption ? MM.textOnBrand : MM.textSecondary)
                         .background(
                             Capsule().fill(
-                                draft.isIncome == income
-                                ? (income ? Cute.mint : Cute.peach)
+                                draft.isIncome == incomeOption
+                                ? (incomeOption ? MM.income : MM.brandStrong)
                                 : Color.clear
                             )
                         )
                 }
                 .squishy()
+                .accessibilityAddTraits(draft.isIncome == incomeOption ? [.isSelected] : [])
             }
         }
         .padding(5)
-        .background(Capsule().fill(Cute.card))
+        .background(Capsule().fill(MM.surfaceCard))
     }
 
     private var amountField: some View {
         VStack(spacing: 6) {
             Text(draft.isIncome ? "收入金額" : "花了多少")
-                .font(Cute.captionFont)
-                .foregroundStyle(Cute.cocoaSoft)
+                .font(MM.font(12, .medium, relativeTo: .caption))
+                .tracking(1.2) // +10%
+                .foregroundStyle(MM.textTertiary)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("$")
-                    .font(Cute.font(26, .bold))
-                    .foregroundStyle(Cute.cocoaSoft)
+                    .font(MM.font(26, .bold, relativeTo: .title2))
+                    .foregroundStyle(MM.textSecondary)
                 TextField("0", text: $draft.amountText)
-                    .font(Cute.font(44, .heavy))
-                    .foregroundStyle(draft.isIncome ? Cute.mint : Cute.cocoa)
+                    .font(MM.font(44, .heavy, relativeTo: .largeTitle))
+                    .foregroundStyle(draft.isIncome ? MM.income : MM.textPrimary)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: true, vertical: false)
@@ -303,7 +356,7 @@ struct EntrySheet: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .cuteCard(padding: 22)
+        .mmCard(padding: 22)
     }
 
     private var categoryPicker: some View {
@@ -316,7 +369,7 @@ struct EntrySheet: View {
             ) {
                 ForEach(draft.isIncome ? [ExpenseCategory.income] : ExpenseCategory.expenseCases) { category in
                     CategoryChip(category: category, isSelected: draft.category == category) {
-                        withAnimation(Cute.softPop) { draft.category = category }
+                        withAnimation(MM.softPop) { draft.category = category }
                     }
                 }
             }
@@ -329,20 +382,20 @@ struct EntrySheet: View {
                 dismiss()
             } label: {
                 Text("取消")
-                    .font(Cute.font(16, .semibold))
-                    .foregroundStyle(Cute.cocoaSoft)
-                    .frame(width: 88, height: 52)
-                    .background(Capsule().fill(Cute.card))
+                    .font(MM.font(16, .semibold, relativeTo: .callout))
+                    .foregroundStyle(MM.textSecondary)
+                    .padding(.horizontal, 16)
+                    .frame(minWidth: 88, minHeight: 52)
+                    .background(Capsule().fill(MM.surfaceCard))
             }
             .squishy()
 
             Button(action: save) {
                 Text("存進帳本")
-                    .font(Cute.font(18, .bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(Capsule().fill(draft.amount == nil ? Cute.cocoaSoft : Cute.peach))
+                    .font(MM.font(18, .bold, relativeTo: .title3))
+                    .foregroundStyle(MM.textOnBrand)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(Capsule().fill(draft.amount == nil ? MM.textSecondary : MM.brandStrong))
             }
             .squishy()
             .disabled(draft.amount == nil)
@@ -350,7 +403,17 @@ struct EntrySheet: View {
         .padding(.horizontal, 22)
         .padding(.top, 10)
         .padding(.bottom, 14)
-        .background(.ultraThinMaterial)
+        // Liquid Glass 雙軌（Glass實作規格.md §3.2）：Rectangle 而非帶圓角形狀——
+        // saveBar 貼齊 sheet 左右與底部安全區，圓角由 sheet 本身的 presentationCornerRadius 負責。
+        .background {
+            if #available(iOS 26, *) {
+                // 同 RootTabView 的修正：Rectangle() 需要透明填色，
+                // 否則預設前景色會蓋住玻璃效果（見 Glass實作規格.md 修正記錄）。
+                Rectangle().fill(.clear).glassEffect(.regular, in: .rect)
+            } else {
+                Rectangle().fill(.ultraThinMaterial)
+            }
+        }
     }
 
     private func save() {
@@ -366,7 +429,7 @@ struct EntrySheet: View {
         context.insert(expense)
         try? context.save()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        withAnimation(Cute.bouncy) {
+        withAnimation(MM.bouncy) {
             stage = .saved
             detent = .medium
         }
@@ -382,11 +445,12 @@ struct EntrySheet: View {
         VStack(spacing: 16) {
             CatFaceView(mood: .happy, size: 130)
             Text("記好了！")
-                .font(Cute.font(24, .bold))
-                .foregroundStyle(Cute.cocoa)
+                .font(MM.font(24, .bold, relativeTo: .title2))
+                .foregroundStyle(MM.textPrimary)
             Text("\(draft.isIncome ? "收入" : "支出") $\(draft.amountText)")
-                .font(Cute.font(17, .semibold))
-                .foregroundStyle(draft.isIncome ? Cute.mint : Cute.peachDeep)
+                .font(MM.font(17, .semibold, relativeTo: .headline))
+                .monospacedDigit()
+                .foregroundStyle(draft.isIncome ? MM.income : MM.expense)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
