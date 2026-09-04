@@ -156,15 +156,19 @@ private extension Font.TextStyle {
 
 /// Light：收斂陰影 + hairline。Dark：**禁止陰影**，改 hairline(白 6–9%) + 上緣內高光。
 /// iOS 17 降級：用固定圓角 `RoundedRectangle`，不用 `ConcentricRectangle`（26+ API，見 §1.5）。
-struct MMSurface: ViewModifier {
+///
+/// 泛型化到任意 `InsettableShape`（2026-09-01，驗收退回 BUG-3 順手做）：
+/// 月份切換器原本用膠囊＋玻璃，改回內容層卡片規則後，需要同一套 hairline／
+/// 上緣高光／陰影邏輯套在 `Capsule` 而不是 `RoundedRectangle` 上——泛型化避免
+/// 在 StatsView 裡重複刻一份一樣的裸色碼／裸數字。
+struct MMSurface<S: InsettableShape>: ViewModifier {
     @Environment(\.colorScheme) private var scheme
+    var shape: S
     var padding: CGFloat
-    var cornerRadius: CGFloat
-    /// true＝卡片級陰影收斂值；false＝列表列級（更收斂）。
+    /// true＝卡片級陰影收斂值；false＝列表列／膠囊級（更收斂）。
     var isCard: Bool
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         content
             .padding(padding)
             .background(shape.fill(MM.surfaceCard))
@@ -199,11 +203,18 @@ struct MMSurface: ViewModifier {
 extension View {
     /// 卡片（`summaryCard`／`balanceCard`／`breakdown` 這類容器）。
     func mmCard(padding: CGFloat = 20, cornerRadius: CGFloat = MM.R.lg) -> some View {
-        modifier(MMSurface(padding: padding, cornerRadius: cornerRadius, isCard: true))
+        modifier(MMSurface(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous), padding: padding, isCard: true))
     }
 
     /// 列表列（`ExpenseRow`），陰影更收斂。
     func mmRow(padding: CGFloat = 14, cornerRadius: CGFloat = MM.R.md) -> some View {
-        modifier(MMSurface(padding: padding, cornerRadius: cornerRadius, isCard: false))
+        modifier(MMSurface(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous), padding: padding, isCard: false))
+    }
+
+    /// 膠囊版列級容器（`StatsView` 月份切換器）：內容一路隨頁面捲動、
+    /// 背後永遠是純色底，沒有東西可折射，玻璃在此無意義——改用跟卡片/列
+    /// 同一套 hairline＋陰影規則，只是形狀換成 `Capsule`（驗收退回 BUG-3）。
+    func mmPill(padding: CGFloat = 0) -> some View {
+        modifier(MMSurface(shape: Capsule(), padding: padding, isCard: false))
     }
 }

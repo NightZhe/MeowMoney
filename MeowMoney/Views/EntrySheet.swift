@@ -48,6 +48,7 @@ struct EntrySheet: View {
     @State private var draft = EntryDraft()
     @State private var typedText: String = ""
     @State private var detent: PresentationDetent = .medium
+    @State private var showDatePicker = false
     @FocusState private var amountFocused: Bool
 
     var body: some View {
@@ -228,6 +229,9 @@ struct EntrySheet: View {
                 .font(MM.font(16, .medium, relativeTo: .body))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                // 標準字級下含 padding 只有 43pt，差一點點就不足 44——
+                // 一併修掉（驗收退回 BUG-1 要求整個 App 掃過一輪）。
+                .frame(minHeight: 44)
                 .background(Capsule().fill(MM.surfaceCard))
                 .submitLabel(.done)
                 .onSubmit(submitTypedText)
@@ -288,12 +292,7 @@ struct EntrySheet: View {
 
                     VStack(alignment: .leading, spacing: 10) {
                         SectionHeader(text: "日期")
-                        DatePicker("", selection: $draft.date, displayedComponents: [.date, .hourAndMinute])
-                            .labelsHidden()
-                            .datePickerStyle(.compact)
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: MM.R.md, style: .continuous).fill(MM.surfaceCard))
+                        dateField
                     }
                 }
                 .padding(.horizontal, 22)
@@ -304,6 +303,68 @@ struct EntrySheet: View {
 
             saveBar
         }
+        .sheet(isPresented: $showDatePicker) {
+            datePickerSheet
+        }
+    }
+
+    // 系統 compact DatePicker 本身的可點按鈕實測只有約 36pt 高，且是原生控件——
+    // `.frame(minHeight:)`／`.controlSize(.large)` 都只會撐大外層版位或完全沒效果，
+    // 不會撐大它真正的命中範圍（模擬器實機點擊驗證過：外層多出來的空間點下去沒反應，
+    // `.controlSize(.large)` 對這顆 compact picker 也量不出尺寸變化）。改成自訂
+    // Button 開全螢幕的日期時間 sheet，觸控區完全由我們自己定義，保證 ≥44pt
+    // （驗收退回 BUG-1）。
+    private var dateField: some View {
+        Button {
+            showDatePicker = true
+        } label: {
+            HStack(spacing: 8) {
+                Text(draft.date.formatted(.dateTime.year().month().day().locale(Locale(identifier: "zh_TW"))))
+                Text(draft.date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_TW"))))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(MM.textTertiary)
+            }
+            .font(MM.font(16, .medium, relativeTo: .body))
+            .foregroundStyle(MM.textPrimary)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: MM.R.md, style: .continuous).fill(MM.surfaceCard))
+        }
+        .squishy()
+        .accessibilityLabel("日期與時間，\(draft.date.formatted(.dateTime.month().day().hour().minute()))")
+        .accessibilityHint("點兩下修改日期與時間")
+    }
+
+    // `.graphical` 樣式在有 `.hourAndMinute` 時，時間列會被畫在月曆格線下方，
+    // 整體高度超過 `.medium` detent、且內容不可捲動——時間永遠看不到也點不到
+    // （獨立驗收實測：連續 swipe 前後截圖完全相同，時間根本無法修改）。
+    // 改用 `.wheel`：日期與時間三顆滾輪一次展開、無隱藏內容、不需捲動，
+    // 滾輪本身是系統控件，命中範圍遠大於 44pt，不會重蹈原生 compact picker 的
+    // 觸控目標問題（那次的問題是「小按鈕」，這裡是「大滾輪」，本質不同）。
+    private var datePickerSheet: some View {
+        NavigationStack {
+            DatePicker(
+                "日期與時間",
+                selection: $draft.date,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .datePickerStyle(.wheel)
+            .labelsHidden()
+            .tint(MM.brandStrong)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 8)
+            .navigationTitle("日期與時間")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { showDatePicker = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 
     private var typeToggle: some View {
@@ -328,6 +389,10 @@ struct EntrySheet: View {
                             )
                         )
                 }
+                // 視覺膠囊維持原本 vertical padding 11 的高度，觸控區用透明 frame
+                // 擴到 44pt（驗收退回 BUG-1，同 CategoryChip 的做法）。
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
                 .squishy()
                 .accessibilityAddTraits(draft.isIncome == incomeOption ? [.isSelected] : [])
             }
@@ -346,13 +411,25 @@ struct EntrySheet: View {
                 Text("$")
                     .font(MM.font(26, .bold, relativeTo: .title2))
                     .foregroundStyle(MM.textSecondary)
+                // `.fixedSize(horizontal: true)` 曾經讓這顆 TextField 永遠用它「想要」的
+                // 寬度渲染，金額一長就把整張 sheet 往外撐寬，「分類／備註／日期」的標籤
+                // 被推出左邊界（驗收退回 BUG-4）。拿掉 fixedSize 讓它服從父層給的寬度，
+                // 加 minimumScaleFactor 讓長數字用縮小字級表示而不是撐版；
+                // amountText 另外設輸入長度上限（12 位數，含千萬級以上台幣金額仍綽綽有餘），
+                // 兩者一起防線，單靠縮放字級在極端輸入下仍可能小到看不清。
                 TextField("0", text: $draft.amountText)
                     .font(MM.font(44, .heavy, relativeTo: .largeTitle))
                     .foregroundStyle(draft.isIncome ? MM.income : MM.textPrimary)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
                     .focused($amountFocused)
+                    .onChange(of: draft.amountText) { _, newValue in
+                        if newValue.count > 12 {
+                            draft.amountText = String(newValue.prefix(12))
+                        }
+                    }
             }
         }
         .frame(maxWidth: .infinity)

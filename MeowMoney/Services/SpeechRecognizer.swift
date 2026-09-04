@@ -94,9 +94,7 @@ final class SpeechRecognizer {
         if recognizer.supportsOnDeviceRecognition {
             request.requiresOnDeviceRecognition = true
         }
-        if #available(iOS 16.0, *) {
-            request.addsPunctuation = false
-        }
+        request.addsPunctuation = false
         self.request = request
 
         let inputNode = audioEngine.inputNode

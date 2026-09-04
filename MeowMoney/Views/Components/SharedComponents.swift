@@ -29,6 +29,11 @@ struct CategoryChip: View {
                     .stroke(category.color.opacity(isSelected ? 0 : 0.35), lineWidth: 1.5)
             )
         }
+        // 視覺膠囊仍是原本的 34–36pt 高度（不撐大湊尺寸），
+        // 觸控區用透明 frame 擴到 44pt，contentShape 讓整個 44pt 範圍都能點
+        // （驗收退回 BUG-1，見 階段1-設計規格.md §無障礙／HIG 44×44）。
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .squishy()
         .accessibilityLabel(category.title)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
@@ -69,20 +74,35 @@ struct ExpenseRow: View {
                         // 標準字級單行截斷；AX 級距（Accessibility Sizes）放寬到 2 行，
                         // 否則中文超大字級單行常常只剩 3–4 字（階段1規格 §3.2(a)）。
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    // 沒有 lineLimit 的話，金額欄拿到 layoutPriority(1) 後這欄會被擠到
+                    // 接近 0 寬，沒有上限的 Text 會硬繞成幾十行、把整列撐爆成一大塊
+                    // 空白（驗收 BUG-2 用超長備註＋最大 AX 級距實測到的真的會發生，
+                    // 不是假設）。鎖住 1 行＋沿用同一支 minimumScaleFactor 收尾。
                     Text("\(expense.category.title)・\(expense.date.formatted(date: .omitted, time: .shortened))")
                         .font(MM.font(13, .medium, relativeTo: .footnote))
                         .tracking(1.04) // +8%
                         .foregroundStyle(MM.textTertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
+                // 金額拿 layoutPriority(1) 後，標題欄在極端案例（超長備註＋極大金額＋
+                // 最大 AX 級距同時出現）會被擠到 0 寬、整段文字直接消失不見——比原本
+                // 「金額被裁」更糟。給標題欄一個保底寬度，HStack 協商時金額還是優先，
+                // 但標題不會被擠到完全看不見。
+                .frame(minWidth: 60, alignment: .leading)
 
                 Spacer(minLength: 8)
 
                 // 金額不可截斷／換行，縮小字級代替（階段1規格 §3.1）。
+                // 0.55 在最大 AX 級距＋極大金額（例如 999,999,999）下仍不夠縮，
+                // 驗收退回 BUG-2：降到 0.35，並用 layoutPriority 讓標題欄先讓出空間，
+                // 不是金額欄先被擠。
                 Text(Money.signed(expense.amount, isIncome: expense.isIncome))
                     .font(MM.font(21, .bold, relativeTo: .body))
                     .monospacedDigit()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.55)
+                    .minimumScaleFactor(0.35)
+                    .layoutPriority(1)
                     .foregroundStyle(expense.isIncome ? MM.income : MM.expense)
             }
             .padding(.vertical, 10)
