@@ -36,11 +36,19 @@ struct StatsView: View {
             .sorted { $0.total > $1.total }
     }
 
+    /// 08「本月的發現」。純本地同步計算，資料不足回傳空陣列（見 `insightsSection`）。
+    private var insights: [Insight] {
+        InsightEngine.insights(for: expenses, month: anchorMonth, calendar: calendar)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 monthSwitcher
                 balanceCard
+                // 位置：結餘卡之後、分類清單之前——**與規格本文不同**，以使用者定案的附錄為準
+                // （階段2-3規格 附錄「使用者定案」第 2 項：先看自己的數字，再看 App 的解讀）。
+                insightsSection
                 breakdown
             }
             .padding(.horizontal, 22)
@@ -49,6 +57,72 @@ struct StatsView: View {
         }
         .scrollIndicators(.hidden)
         .background(MM.bgBase.ignoresSafeArea())
+    }
+
+    /// 資料不足時整段（含標題）都不渲染——不是空狀態，是完全不存在，
+    /// 避免「這個月還沒有發現」這種廢話（規格 §4.2）。
+    @ViewBuilder
+    private var insightsSection: some View {
+        if !insights.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeader(text: "本月的發現")
+
+                ScrollView(.horizontal) {
+                    HStack(spacing: 12) {
+                        ForEach(insights) { insight in
+                            insightCard(insight)
+                        }
+                    }
+                    .padding(.trailing, 20)
+                    .scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.viewAligned)
+            }
+        }
+    }
+
+    private func insightIcon(_ kind: InsightKind) -> String {
+        switch kind {
+        case .categoryTrend: "chart.line.uptrend.xyaxis"
+        case .frequency: "repeat.circle"
+        case .weekdayPattern: "calendar"
+        }
+    }
+
+    /// 卡片本身不可點——PM 提案沒有要求可互動的下一步，硬加「查看詳情」是本次不需要的
+    /// 臆測功能（規格 §4.2）。
+    private func insightCard(_ insight: Insight) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: MM.R.chip, style: .continuous)
+                    .fill(MM.brandFill.opacity(0.16))
+                    .frame(width: 38, height: 38)
+                Image(systemName: insightIcon(insight.kind))
+                    .font(.system(size: 16, weight: .semibold))
+                    // `onFill`：放在淺色品牌填色（`brandFill` 及其衍生透明度）上的圖示色，
+                    // 兩模式都是深色，保證對比（MMTheme.swift 對這個 token 的用途說明）。
+                    .foregroundStyle(MM.onFill)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(insight.title)
+                    .font(MM.font(16, .semibold, relativeTo: .callout))
+                    .foregroundStyle(MM.textPrimary)
+                    .lineLimit(2)
+                Text(insight.detail)
+                    .font(MM.font(13, .medium, relativeTo: .footnote))
+                    .foregroundStyle(MM.textSecondary)
+                    .lineLimit(2)
+            }
+        }
+        .frame(width: 260, alignment: .topLeading)
+        // Dynamic Type 放大時讓卡片長高，不鎖死 92pt（規格 §4.2／§6）。
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minHeight: 92, alignment: .topLeading)
+        .mmRow(padding: 14, cornerRadius: MM.R.md)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(insight.title)，\(insight.detail)")
     }
 
     // 月份切換器（驗收退回 BUG-3，拿掉玻璃）：這一列隨內容一起捲動、背後永遠是

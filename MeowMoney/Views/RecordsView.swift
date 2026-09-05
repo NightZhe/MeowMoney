@@ -150,22 +150,31 @@ struct RecordsView: View {
     }
 
     private func dayHeader(_ group: DayGroup) -> some View {
+        // 附帶修正（同一類問題）：這三個 Text 原本都沒有 lineLimit，AX5 下 HStack
+        // 塞不進去時會整列換成 2–3 行（不掉資料，但不符合規格 §3.1「縮字不換行」）。
+        // 日期標題最短、最不需要縮，鎖 1 行即可；兩個金額欄比照 HomeView miniStat
+        // 同一套 lineLimit(1) + minimumScaleFactor，不用 layoutPriority 搶位。
         HStack {
             Text(dayTitle(group.id))
                 .font(MM.font(15, .bold, relativeTo: .subheadline))
                 .foregroundStyle(MM.textPrimary)
+                .lineLimit(1)
             Spacer()
             if group.income > 0 {
                 Text("+\(Money.string(group.income))")
                     .font(MM.font(13, .semibold, relativeTo: .footnote))
                     .monospacedDigit()
                     .foregroundStyle(MM.income)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.2)
             }
             if group.spent > 0 {
                 Text("-\(Money.string(group.spent))")
                     .font(MM.font(13, .semibold, relativeTo: .footnote))
                     .monospacedDigit()
                     .foregroundStyle(MM.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.2)
             }
         }
         .padding(.vertical, 4)

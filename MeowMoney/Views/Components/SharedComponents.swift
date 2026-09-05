@@ -52,6 +52,9 @@ struct ExpenseRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showDetail = false
     @State private var confirmingDelete = false
+    /// 「手動修正」的第二個 sheet：兩個 sheet 前後接力，不疊加
+    /// （階段2-3規格 §1.4）——`showDetail` 先關，這個才開。
+    @State private var editingExpense: Expense?
 
     var body: some View {
         Button {
@@ -142,7 +145,13 @@ struct ExpenseRow: View {
             Button("取消", role: .cancel) {}
         }
         .sheet(isPresented: $showDetail) {
-            ExpenseDetailSheet(expense: expense)
+            ExpenseDetailSheet(expense: expense, onRequestEdit: { expense in
+                showDetail = false
+                editingExpense = expense
+            })
+        }
+        .sheet(item: $editingExpense) { expense in
+            EntrySheet(mode: .edit(expense))
         }
     }
 

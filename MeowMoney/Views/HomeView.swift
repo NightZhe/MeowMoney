@@ -124,7 +124,12 @@ struct HomeView: View {
                 .font(MM.font(22, .bold, relativeTo: .title3))
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.55)
+                // 跟 StatsView 結餘欄同一類坑，但成因不同：這裡沒有 layoutPriority 搶位，
+                // 是欄寬本身（卡片對半分）在 AX5＋10 位數金額同時出現時，0.55 這個地板
+                // 縮不夠——實測 9,876,543,210＋1,234,567,890 相加後仍會被 `.lineLimit(1)`
+                // 截斷成「$11,111...」。跟 StatsView 一樣，把地板降到 0.2 讓
+                // minimumScaleFactor 真正兜住這個極端案例，不靠 layoutPriority。
+                .minimumScaleFactor(0.2)
                 .foregroundStyle(color)
         }
         .frame(maxWidth: .infinity)

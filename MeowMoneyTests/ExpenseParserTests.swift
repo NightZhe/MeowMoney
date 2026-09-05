@@ -207,4 +207,63 @@ final class ExpenseParserTests: XCTestCase {
         XCTAssertFalse(result.note.contains("$"))
         XCTAssertFalse(result.note.lowercased().contains("nt"))
     }
+
+    // MARK: - 一句話多筆（07）
+
+    private func parseMultiple(_ text: String) -> [ParsedEntry] {
+        ExpenseParser.parseMultiple(text, now: now, calendar: calendar)
+    }
+
+    func testParseMultipleSingleSentenceMatchesParse() {
+        let text = "午餐便當一百二"
+        let multiple = parseMultiple(text)
+        XCTAssertEqual(multiple.count, 1)
+        XCTAssertEqual(multiple.first, parse(text))
+    }
+
+    func testParseMultipleThreeSentencesSplitBySpace() {
+        let result = parseMultiple("早餐五十 捷運三十 午餐一百二")
+        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(result[0].amount, 50)
+        XCTAssertEqual(result[0].category, .food)
+        XCTAssertEqual(result[1].amount, 30)
+        XCTAssertEqual(result[1].category, .transport)
+        XCTAssertEqual(result[2].amount, 120)
+        XCTAssertEqual(result[2].category, .food)
+    }
+
+    func testParseMultipleSplitsOnPunctuation() {
+        let result = parseMultiple("早餐五十、捷運三十，午餐一百二。")
+        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(result.map(\.amount), [50, 30, 120])
+    }
+
+    func testParseMultipleEmptyStringReturnsEmpty() {
+        XCTAssertEqual(parseMultiple(""), [])
+    }
+
+    func testParseMultipleWhitespaceOnlyReturnsEmpty() {
+        XCTAssertEqual(parseMultiple("   \n\t  "), [])
+    }
+
+    func testParseMultipleCompletelyUnparseableReturnsEmpty() {
+        // 純標點、沒有任何實質內容——不是「切不出金額」，是根本沒有可切的句子。
+        XCTAssertEqual(parseMultiple("，，，、。；"), [])
+    }
+
+    func testParseMultipleSegmentWithoutAmountIsStillReturned() {
+        let result = parseMultiple("早餐五十 心情不錯 午餐一百二")
+        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(result[0].amount, 50)
+        XCTAssertNil(result[1].amount)
+        XCTAssertFalse(result[1].isUsable)
+        XCTAssertEqual(result[2].amount, 120)
+    }
+
+    /// 千分位逗號不該被當成句界（半形逗號故意排除在句界標點之外）。
+    func testParseMultipleDoesNotSplitThousandSeparatorComma() {
+        let result = parseMultiple("買球鞋3,280元")
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.amount, 3280)
+    }
 }
