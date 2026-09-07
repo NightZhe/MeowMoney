@@ -186,7 +186,7 @@ final class InsightEngineTests: XCTestCase {
 
     func testCategoryTrend_101x_UsesAbsoluteValue() {
         let title = categoryTrendTitle(previousParts: [40, 30, 30], current: 10100)
-        XCTAssertEqual(title, "購物上個月幾乎沒花，這個月 \(Money.string(10100))")
+        XCTAssertEqual(title, "購物上個月幾乎沒花")
     }
 
     func testCategoryTrend_9xDecrease_StillUsesPercent() {
@@ -206,20 +206,20 @@ final class InsightEngineTests: XCTestCase {
 
     func testCategoryTrend_101xDecrease_UsesAbsoluteValue() {
         let title = categoryTrendTitle(previousParts: [3400, 3350, 3350], current: 100)
-        XCTAssertEqual(title, "購物這個月幾乎沒花，上個月 \(Money.string(10100))")
+        XCTAssertEqual(title, "購物這個月幾乎沒花")
     }
 
     /// 這個月完全沒買（currentTotal 是 0），會踩到「除以 0」的邊界，
     /// 必須直接落到絕對值分支，不能讓 Decimal 除以 0 產生 NaN 或壞字串。
     func testCategoryTrend_CurrentZero_UsesAbsoluteValue() {
         let title = categoryTrendTitle(previousParts: [2000, 1500, 1500], current: nil)
-        XCTAssertEqual(title, "購物這個月幾乎沒花，上個月 \(Money.string(5000))")
+        XCTAssertEqual(title, "購物這個月幾乎沒花")
     }
 
     /// 實際踩到的案例：上個月 365、這個月 9,876,543,210，原本會算出 27 億 %。
     func testCategoryTrend_RealWorldExtremeCase() {
         let title = categoryTrendTitle(previousParts: [122, 121, 122], current: 9_876_543_210)
-        XCTAssertEqual(title, "購物上個月幾乎沒花，這個月 \(Money.string(9_876_543_210))")
+        XCTAssertEqual(title, "購物上個月幾乎沒花")
     }
 
     // MARK: - 上限

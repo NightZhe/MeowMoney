@@ -150,13 +150,11 @@ enum InsightEngine {
             : (current == 0 ? nil : previous / current)
 
         guard let multiple, multiple <= multipleDisplayCeiling else {
-            // > 100 倍，或基期趨近於 0：百分比、倍數都已經失真，乾脆直接講絕對值。
-            // 小的那邊（不管是上個月還是這個月）講「幾乎沒花」，大的那邊講實際金額。
-            if isIncrease {
-                return "\(categoryTitle)上個月幾乎沒花，這個月 \(Money.string(current))"
-            } else {
-                return "\(categoryTitle)這個月幾乎沒花，上個月 \(Money.string(previous))"
-            }
+            // > 100 倍，或基期趨近於 0：百分比、倍數都已經失真，改講「幾乎沒花」的那一邊。
+            // 實際金額由副標的「這個月 X，上個月 Y」負責，標題不重複同一個數字。
+            return isIncrease
+                ? "\(categoryTitle)上個月幾乎沒花"
+                : "\(categoryTitle)這個月幾乎沒花"
         }
 
         guard multiple < percentDisplayCeiling else {
