@@ -50,6 +50,51 @@ enum ExpenseParser {
         )
     }
 
+    // MARK: - 一句話多筆（07）
+
+    /// 把「早餐五十 捷運三十 午餐一百二」這種一次講好幾筆的話，切成多個 `ParsedEntry`。
+    ///
+    /// 切句規則刻意保守：只認停頓（空白/換行）與常見的列舉型標點（、，。；），
+    /// **不**嘗試理解「一百二十塊的午餐和三十塊的捷運」這種需要語意判斷的句子——
+    /// 切錯了會比不切更糟。每一段都直接丟給既有的 `parse`，核心解析邏輯不重寫。
+    ///
+    /// - 單句輸入（切不出第二段）回傳單一元素，結果與直接呼叫 `parse` 相同。
+    /// - 完全沒有內容（空字串、純空白、純標點）回傳空陣列，不回傳「空的一筆」。
+    /// - 切出來的某段沒有金額，仍會回傳該筆（`amount` 為 nil），交給 UI 決定要不要讓使用者補。
+    static func parseMultiple(
+        _ raw: String,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [ParsedEntry] {
+        splitIntoSentences(raw).map { parse($0, now: now, calendar: calendar) }
+    }
+
+    /// 半形逗號故意不當句界：「3,280」這種千分位寫法在既有 `parse` 裡是合法金額，
+    /// 切句規則不該把它拆成「3」「280」兩段。全形頓號/逗號在中文口語裡不會拿來寫千分位，
+    /// 才收進句界標點。
+    private static let sentenceBoundaryPunctuation: Set<Character> = [
+        "、", "，", "。", "；", ";"
+    ]
+
+    static func splitIntoSentences(_ raw: String) -> [String] {
+        var segments: [String] = []
+        var current = ""
+        for char in raw {
+            if char.isWhitespace || sentenceBoundaryPunctuation.contains(char) {
+                if !current.isEmpty {
+                    segments.append(current)
+                    current = ""
+                }
+            } else {
+                current.append(char)
+            }
+        }
+        if !current.isEmpty {
+            segments.append(current)
+        }
+        return segments
+    }
+
     // MARK: - 正規化
 
     /// 全形轉半形、小寫化、標點換成空白。中文字元不受影響。

@@ -11,14 +11,19 @@ enum CatMood {
 }
 
 struct CatFaceView: View {
+    @Environment(\.colorScheme) private var scheme
+
     var mood: CatMood = .idle
     var size: CGFloat = 120
     /// 聆聽時的音量（0...1），會讓嘴巴跟著開合。
     var level: Double = 0
 
-    private var fur: Color { Color(hex: 0xFFE3C9) }
-    private var furShade: Color { Color(hex: 0xF7CEA9) }
-    private var ink: Color { Cute.cocoa }
+    private var fur: Color { Color("cat/fur") }
+    private var furShade: Color { Color("cat/fur-shade") }
+    /// 線稿色：README §1.2「貓臉」列——跟隨 `text/primary`，Dark 模式才不會用暗棕線稿糊在暗背景上。
+    private var ink: Color { MM.textPrimary }
+    /// 表情強調色（腮紅／鼻子）：跟隨 `brand/primary-fill`。
+    private var accent: Color { MM.brandFill }
 
     var body: some View {
         ZStack {
@@ -27,7 +32,7 @@ struct CatFaceView: View {
             features
         }
         .frame(width: size, height: size)
-        .animation(Cute.bouncy, value: mood)
+        .animation(MM.bouncy, value: mood)
     }
 
     // MARK: - 耳朵
@@ -40,7 +45,7 @@ struct CatFaceView: View {
                         .fill(fur)
                         .frame(width: size * 0.30, height: size * 0.30)
                     EarShape()
-                        .fill(Cute.peach.opacity(0.65))
+                        .fill(accent.opacity(0.65))
                         .frame(width: size * 0.16, height: size * 0.16)
                         .offset(y: size * 0.06)
                 }
@@ -63,6 +68,13 @@ struct CatFaceView: View {
             )
             .frame(width: size * 0.9, height: size * 0.86)
             .shadow(color: Cute.shadow, radius: size * 0.06, x: 0, y: size * 0.03)
+            // Dark 模式暖色系背景跟暖色系毛髮邊界對比低，加 1pt hairline 讓輪廓不糊
+            // （README §6.6 附帶修正，CatFaceView 本體不改畫法）。
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.white.opacity(scheme == .dark ? 0.12 : 0), lineWidth: 1)
+                    .frame(width: size * 0.9, height: size * 0.86)
+            )
     }
 
     // MARK: - 五官
@@ -121,14 +133,14 @@ struct CatFaceView: View {
 
     private var blushDot: some View {
         Ellipse()
-            .fill(Cute.peach.opacity(0.55))
+            .fill(accent.opacity(0.55))
             .frame(width: size * 0.16, height: size * 0.09)
             .blur(radius: size * 0.012)
     }
 
     private var nose: some View {
         NoseShape()
-            .fill(Cute.peachDeep)
+            .fill(accent)
             .frame(width: size * 0.075, height: size * 0.055)
             .offset(y: size * 0.09)
     }
@@ -138,7 +150,7 @@ struct CatFaceView: View {
         switch mood {
         case .listening:
             Ellipse()
-                .fill(Cute.peachDeep.opacity(0.85))
+                .fill(accent.opacity(0.85))
                 .frame(
                     width: size * (0.10 + 0.05 * level),
                     height: size * (0.07 + 0.10 * level)
@@ -254,5 +266,5 @@ private struct ArcShape: Shape {
         }
     }
     .padding(40)
-    .background(Cute.background)
+    .background(MM.bgBase)
 }

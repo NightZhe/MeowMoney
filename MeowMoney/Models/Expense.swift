@@ -40,8 +40,20 @@ final class Expense {
         isIncome ? amount : -amount
     }
 
-    /// 顯示用標題：有備註就用備註，否則用分類名。
+    /// 顯示用標題：有備註就用正規化後的備註，否則用分類名。
+    /// 備註來自語音辨識，可能含首尾空白或內部連續換行/空白，正規化後再顯示
+    /// 才不會讓 `lineLimit(1)` 的列表列出現擠壓或空白行。
     var displayTitle: String {
-        note.trimmingCharacters(in: .whitespaces).isEmpty ? category.title : note
+        let normalizedNote = Expense.normalizedDisplayText(note)
+        return normalizedNote.isEmpty ? category.title : normalizedNote
+    }
+
+    /// 把文字的首尾空白去掉，並把內部連續的換行/空白 collapse 成單一半形空格。
+    /// 純函式，無失敗情況。
+    static func normalizedDisplayText(_ text: String) -> String {
+        text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 }

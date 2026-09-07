@@ -45,18 +45,22 @@ enum ExpenseCategory: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// 來自 Asset Catalog（Light／Dark 兩個外觀，隨系統自動切換）。
+    /// 色值依據 `ProjectDesignGuide/04-MeowMoney2.0-DesignSystem/README.md` §2、§6.5③。
+    /// `income` 沿用既有的 `state/income`；`other` 目前借用 `text/secondary`（中性色）——
+    /// 設計系統沒有為它定義專屬分類色，這是暫定選擇，待 uiux 正式定義後再換掉。
     var color: Color {
         switch self {
-        case .food: Cute.peach
-        case .transport: Cute.sky
-        case .shopping: Cute.lilac
-        case .entertainment: Color(hex: 0xF6A6C1)
-        case .home: Color(hex: 0xB0D68A)
-        case .medical: Color(hex: 0xF29E9E)
-        case .education: Color(hex: 0x9FC6F5)
-        case .social: Cute.butter
-        case .income: Cute.mint
-        case .other: Cute.cocoaSoft
+        case .food: Color("category/food")
+        case .transport: Color("category/transport")
+        case .shopping: Color("category/shopping")
+        case .entertainment: Color("category/entertainment")
+        case .home: Color("category/home")
+        case .medical: Color("category/medical")
+        case .education: Color("category/education")
+        case .social: Color("category/social")
+        case .income: Color("state/income")
+        case .other: Color("text/secondary")
         }
     }
 

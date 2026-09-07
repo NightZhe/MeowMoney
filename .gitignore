@@ -1,6 +1,7 @@
 # Xcode 建置產物
 build/
 build-ios/
+build-mac/
 DerivedData/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/

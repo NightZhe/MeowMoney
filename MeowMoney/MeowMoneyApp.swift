@@ -6,8 +6,7 @@ struct MeowMoneyApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
-                .tint(Cute.peach)
-                .preferredColorScheme(.light)
+                .tint(MM.brandText)
         }
         .modelContainer(for: Expense.self)
     }
