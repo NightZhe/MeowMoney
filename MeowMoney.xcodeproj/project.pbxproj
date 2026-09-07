@@ -294,8 +294,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "喵嗚記帳";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "需要使用麥克風，才能聽你說話並自動記帳。";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要語音辨識，才能把你說的話轉成帳目金額與分類。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "聽你說一句話就幫你記好帳。錄到的聲音只用來辨識這一筆，不會儲存、也不會留下錄音檔。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "把你說的話轉成金額與分類。在支援的裝置上，辨識完全在你的手機裡完成。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -325,8 +325,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "喵嗚記帳";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "需要使用麥克風，才能聽你說話並自動記帳。";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要語音辨識，才能把你說的話轉成帳目金額與分類。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "聽你說一句話就幫你記好帳。錄到的聲音只用來辨識這一筆，不會儲存、也不會留下錄音檔。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "把你說的話轉成金額與分類。在支援的裝置上，辨識完全在你的手機裡完成。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
