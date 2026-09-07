@@ -69,11 +69,15 @@ struct EntrySheet: View {
     /// 一旦使用者開始輸入金額（哪怕金額還無效）就收掉，不用等到金額有效才消失
     /// （階段2-3規格 §2.3）。
     @State private var showAmountHint = false
-    /// ④ 環境太吵／靜音太久：目前架構下跟「App 被切到背景暫停」共用同一個
-    /// `SpeechRecognizer.State.idle`，沒有專屬狀態可以分辨（見規格 §2.4 對 Services 的
-    /// 需求，本階段小a 範圍不含 Services/，這裡先用「是不是背景中斷造成的」這個
-    /// View 層才知道的訊號，在 promptText 分岔文案；小b 若之後補上專屬 `.timeout` state，
-    /// 這裡可以直接改吃那個訊號，不用動 UI 結構）。
+    /// ④ 環境太吵／靜音太久 vs 「App 被切到背景暫停」：Service 層已經分開成
+    /// `.timeout`（沒聽到內容）與 `.idle`（`cancel()` 造成，含背景中斷）兩種 state，
+    /// 但背景中斷本身在 Service 層仍然只是 `.idle`，沒有專屬 case——這裡保留一個
+    /// View 層才知道的旗標來分岔文案（規格 §2.4）。
+    /// **重置點**：每次真的重新開始聆聽（`setUp()` 的 `.voice` 分支、
+    /// `restartListening()`）都會歸零，因為那才是「上一次背景中斷」這個資訊
+    /// 失效的時間點；只在 `scenePhase` 切到 `.background` 時設為 true。
+    /// 舊版 bug：只有賦值成 true，全檔沒有任何一處歸零，導致背景中斷發生過一次後，
+    /// 之後每一次「沒聽到聲音」（`.timeout`）都會被誤判成「已暫停」。
     @State private var wasInterruptedByBackground = false
 
     // MARK: - 07 一句話多筆
@@ -125,6 +129,7 @@ struct EntrySheet: View {
         case .voice:
             stage = .listening
             detent = .medium
+            wasInterruptedByBackground = false
             recognizer.onFinish = { text in
                 accept(text: text)
             }
@@ -270,7 +275,17 @@ struct EntrySheet: View {
                 .squishy()
 
                 Button {
-                    recognizer.stop()
+                    if recognizer.state.isListening {
+                        recognizer.stop()
+                    } else {
+                        // `.idle`／`.timeout`／`.denied`／`.failed` 都停在這個畫面，
+                        // 文字已經是「重新聆聽」，動作要跟著真的重新開始聆聽，
+                        // 不能繼續呼叫 `stop()`（會被 guard 擋掉，變成死按鈕）。
+                        // `.failed` 的成因（辨識器暫時不可用／音訊啟動失敗）跟權限
+                        // 被拒無關，重試合理；權限被拒是另一個獨立的 `.denied` 分支，
+                        // 已經有專屬的「前往設定」按鈕處理那條路。
+                        restartListening()
+                    }
                 } label: {
                     Text(recognizer.state.isListening ? "說完了" : "重新聆聽")
                         .font(MM.font(17, .bold, relativeTo: .headline))
@@ -298,9 +313,13 @@ struct EntrySheet: View {
         case .listening: return "說說看：「午餐便當一百二」"
         case .denied: return "沒有權限，可以先用打字的"
         case .failed: return "聽不到聲音，可以先用打字的"
+        case .timeout: return "沒聽到聲音，可以再說一次"
         case .idle:
-            // ④ 環境太吵／靜音太久 vs 被切到背景暫停：兩種情境目前在 Service 層是
-            // 同一個 `.idle`，靠這裡的訊號分岔文案（見 `wasInterruptedByBackground` 註記）。
+            // 「沒聽到內容」已經獨立成 `.timeout`，這裡的 `.idle` 只會是 `cancel()`
+            // 造成的（背景中斷／使用者取消／切到打字）；停留在 .listening 畫面上
+            // 還看得到 `.idle` 的情況目前只剩背景中斷這一種，用旗標分岔文案
+            // （見 `wasInterruptedByBackground` 註記）。旗標為 false 時退回逾時文案，
+            // 是防禦性預設，不是預期會走到的分支。
             return wasInterruptedByBackground
                 ? "已暫停，點「重新聆聽」繼續"
                 : "沒聽到聲音，可以再說一次"
@@ -657,6 +676,7 @@ struct EntrySheet: View {
     private func restartListening() {
         multiDrafts = nil
         multiEntryRawText = ""
+        wasInterruptedByBackground = false
         withAnimation(MM.bouncy) {
             stage = .listening
             detent = .medium

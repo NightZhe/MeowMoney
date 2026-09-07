@@ -15,6 +15,9 @@ final class SpeechRecognizer {
         case listening
         case denied(String)
         case failed(String)
+        /// 開始聆聽了，但一直沒收到有效逐字稿就靜音逾時結束（環境太吵或使用者沒開口）。
+        /// 與 `.failed` 不同：這不是錯誤，是「這次沒聽到內容」，可以直接再試一次。
+        case timeout
 
         var isListening: Bool { self == .listening }
     }
@@ -161,11 +164,20 @@ final class SpeechRecognizer {
         silenceTimer = nil
         let text = transcript
         cleanUp()
-        state = .idle
         level = 0
-        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        state = Self.finishState(for: text)
+        if state == .idle {
             onFinish?(text)
         }
+    }
+
+    /// 依最終逐字稿決定收工後的狀態：有內容才算正常結束（`.idle`，會呼叫
+    /// `onFinish`）；沒有內容一律當成靜音逾時（`.timeout`，不呼叫 `onFinish`）。
+    /// 這個判斷不管觸發來源是「使用者主動按停止」還是「靜音 watcher 逾時」——
+    /// 兩者共用同一套邏輯：有講到話就是正常結束，什麼都沒聽到就是逾時。
+    /// 抽成靜態純函式，讓測試不需要真的驅動麥克風／語音辨識器就能驗證。
+    nonisolated static func finishState(for transcript: String) -> State {
+        transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .timeout : .idle
     }
 
     private func cleanUp() {
