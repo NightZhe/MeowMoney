@@ -4,11 +4,13 @@ name: MeowMoney-design
 description: >
   喵嗚記帳（MeowMoney）是一款 iOS 語音記帳 App。設計語言的核心判斷是「可愛放在內容裡，
   紀律放在結構裡」——品牌的柔軟來自吉祥物錢錢貓、暖奶油底色與珊瑚品牌色，而版面、圓角、
-  字級、間距一律收斂克制。Liquid Glass 只出現在導航層（tab bar／sheet／月份切換器／
-  麥克風光暈），內容層的卡片與列表一律不透明。全 app 只有一個 resting color（珊瑚
-  #FF9E93／#FF9184），收入綠是唯一的語意例外。層次在淺色靠收斂陰影＋hairline，
-  在暗色靠 hairline＋上緣內高光，暗色下禁用 drop shadow。畫面必須有唯一主角：
-  最小標籤與主數字的字級落差至少 4 倍。
+  字級、間距一律收斂克制。導航層（tab bar／sheet 存檔列／麥克風光暈）用系統
+  `.ultraThinMaterial` ＋ hairline 描邊；原規劃是 Liquid Glass，2026-09-08 實機量測
+  發現效能回歸後全面停用，改用不分 iOS 版本統一的 material 做法（見 Known Gaps／
+  ProjectDesignGuide README §9）。內容層的卡片與列表一律不透明。全 app 只有一個
+  resting color（珊瑚 #FF9E93／#FF9184），收入綠是唯一的語意例外。層次在淺色靠
+  收斂陰影＋hairline，在暗色靠 hairline＋上緣內高光，暗色下禁用 drop shadow。
+  畫面必須有唯一主角：最小標籤與主數字的字級落差至少 4 倍。
 platform: iOS / SwiftUI
 units: pt（不是 px；本檔所有數值都是 pt）
 source-of-truth: ProjectDesignGuide/04-MeowMoney2.0-DesignSystem/（README.md ＋ implementation.md ＋ 階段1-設計規格.md ＋ Glass實作規格.md）
@@ -46,11 +48,13 @@ colors:
   "category/study": "#4B6FC4"
   "category/fun": "#C74C7E"
   "category/med": "#C0453F"
-  "glass/regular-fill": "rgba(255,255,255,0.55)"
-  "glass/regular-stroke": "rgba(255,255,255,0.70)"
-  "glass/clear-fill": "rgba(255,255,255,0.20)"
-  "glass/dim": "rgba(0,0,0,0.35)"
-  "glass/tint-brand": "rgba(255,158,147,0.30)"
+  # 玻璃 token：2026-09-08 起多數未使用（見 Known Gaps）。regular-stroke 例外，
+  # 仍是 Dark tab bar 的描邊色，但已不代表玻璃材質。
+  "glass/regular-fill": "rgba(255,255,255,0.55)"    # 未使用
+  "glass/regular-stroke": "rgba(255,255,255,0.70)"  # Light 側對應用 border/hairline，本值只給 Dark 用
+  "glass/clear-fill": "rgba(255,255,255,0.20)"      # 未使用
+  "glass/dim": "rgba(0,0,0,0.35)"                    # 未使用
+  "glass/tint-brand": "rgba(255,158,147,0.30)"       # 未使用
 
 # ── Dark（= README §6.5 的「v2」，唯一現行版本）─────────────
 colors-dark:
@@ -77,11 +81,11 @@ colors-dark:
   "cat/fur-shade": "#F7CEA9"
   "cat/head-shadow": "rgba(0,0,0,0)"   # 全透明＝暗色下不打陰影
   "category/*": "降飽和 55% 版，色碼在 Figma MM/Color 變數集合，未落到文字檔（見 Known Gaps）"
-  "glass/regular-fill": "rgba(255,255,255,0.10)"
-  "glass/regular-stroke": "rgba(255,255,255,0.24)"
-  "glass/clear-fill": "rgba(255,255,255,0.07)"
-  "glass/dim": "rgba(0,0,0,0.35)"
-  "glass/tint-brand": "rgba(255,158,147,0.24)"
+  "glass/regular-fill": "rgba(255,255,255,0.10)"    # 未使用
+  "glass/regular-stroke": "rgba(255,255,255,0.24)"  # 仍在用：Dark tab bar 描邊色（非玻璃）
+  "glass/clear-fill": "rgba(255,255,255,0.07)"      # 未使用
+  "glass/dim": "rgba(0,0,0,0.35)"                    # 未使用
+  "glass/tint-brand": "rgba(255,158,147,0.24)"       # 未使用
 
 typography:
   # 字族：iOS 一律系統 .rounded（SF Pro Rounded，中文由系統 fallback 到 PingFang TC）
@@ -157,15 +161,15 @@ components:
     size: "{sizes.mic-core}"
     note: 這顆實心圓不加玻璃——官方禁止玻璃疊玻璃
   mic-halo:
-    stroke: "{colors.brand/primary-fill} 30%，1pt，套 glassEffect(.regular)"
+    stroke: "{colors.brand/primary-fill} 30%，1pt，內圈額外套 .ultraThinMaterial 圓環"
     size: "{sizes.mic-halo}"
     outerRing: "{colors.brand/primary-fill} 16%，1pt，{sizes.mic-halo-outer}"
-    note: 兩圈 1pt 細環，不是暈開的半透明色塊。全 app 唯一的自訂玻璃
+    note: 兩圈 1pt 細環，不是暈開的半透明色塊。原本內圈套 glassEffect，2026-09-08 實機量測後移除（見 Known Gaps）
   tab-bar:
-    material: 系統 TabView 原生 Liquid Glass
+    material: ".ultraThinMaterial ＋ hairline 描邊（Dark 用 glass/regular-stroke 24%／Light 用 border/hairline）"
     height: "{sizes.tabbar-h}"
     selectedColor: "{colors.brand/primary-text}"
-    note: 不可手刻。圓角由系統決定，app 端無法設定
+    note: "視覺是手刻 HStack+Capsule（不是系統原生 tab bar 外觀），靠 TabView(selection:) 管理分頁狀態避免 view tree 重建；原本材質是 Liquid Glass，已停用，見 Known Gaps"
   sheet:
     rounded: "{rounded.xl}"
     material: 系統決定，不加自訂背景
@@ -195,8 +199,10 @@ Duolingo 與 Headspace 都很可愛卻不廉價，原因就在這裡。2026-08-2
 
 **Key Characteristics**
 
-- **玻璃只在導航層**：tab bar、sheet、月份切換器、麥克風光暈。卡片與列表列一律不透明——
-  這是 Apple HIG 明文規則，不是折衷。
+- **導航層不透明 material，內容層完全不透明**：tab bar、sheet 存檔列、麥克風光暈用
+  `.ultraThinMaterial` ＋ hairline；卡片與列表列一律不透明。原規劃導航層用 Liquid
+  Glass，2026-09-08 實機量測發現效能回歸後全面停用（見 Known Gaps）——內容層不透明
+  這條規則本身沒變，只是導航層現在也不是真玻璃了。
 - **一個 resting color**：珊瑚（Light `#FF9E93`／Dark `#FF9184`），只給麥克風與選中態。
   收入綠是唯一的語意例外，與珊瑚色相差 153°，一眼可分。
 - **暗色不打陰影**：卡片 `#1E1917` 與地面 `#141010` 只差 1.09:1，層次全靠 hairline
@@ -286,10 +292,12 @@ Dark 的四階暖中性明度階梯（層次靠明度，不靠色相）：
 
 見上方 frontmatter 的 `components:`。三個一定要記住的：
 
-1. **麥克風**是全 app 唯一的自訂玻璃。外圈玻璃細環 + 實心漸層核心 + 深色圖示。
-   核心那顆實心圓**不再加玻璃**（官方禁止玻璃疊玻璃）。
-2. **卡片絕對不能改成 `.glassEffect()`**。它在內容層。
-3. **Tab bar 用系統 `TabView`**，不手刻。手刻的永遠拿不到 Liquid Glass 與捲動收合。
+1. **麥克風**外圈細環 + 實心漸層核心 + 深色圖示。原本外圈套玻璃，2026-09-08 停用，
+   改 `.ultraThinMaterial`（見 Known Gaps）。核心那顆實心圓一直都不加任何材質效果。
+2. **卡片絕對不能加材質效果（含玻璃）**。它在內容層，維持不透明。
+3. **Tab bar 靠 `TabView(selection:)` 管理分頁狀態**（避免切分頁重建 view tree、
+   遺失捲動位置與月份選擇），但**視覺是手刻的 `HStack`＋`Capsule`**，不是系統原生
+   tab bar 外觀，材質是 `.ultraThinMaterial`，不是玻璃。
 
 ## 狀態（iOS 專屬，不可省）
 
@@ -314,11 +322,10 @@ Dark 的四階暖中性明度階梯（層次靠明度，不靠色相）：
 **Don't**
 | ✗ | 為什麼 |
 |---|--------|
-| 把卡片、列表列改成玻璃 | 官方明文禁止在內容層用 Liquid Glass；也會殺掉品牌 |
-| 玻璃疊玻璃 | 官方明文：避免把 Liquid Glass 元素互相堆疊 |
+| 把卡片、列表列加材質效果（含玻璃） | 內容層要維持不透明；也會殺掉品牌 |
+| 幫任何元件重新套用 `.glassEffect()` | 2026-09-08 實機量測後全面停用，效能回歸（見 Known Gaps），沒有先重新量測就不要恢復 |
 | 在 `brand/primary-fill` 上放白字或白圖示 | 1.99:1 |
 | 用蜜桃粉單獨表達狀態 | 顏色不可是唯一資訊載體 |
-| 自己手刻 tab bar | 拿不到系統玻璃與捲動收合 |
 | 暗色下用 drop shadow 撐層次 | 黑底上的黑影等於沒作用 |
 | 把錢錢貓當「粗糙的裝飾」拿掉 | 那是拿品牌換銳利度。正解是把它畫好 |
 
@@ -330,22 +337,30 @@ Dark 的四階暖中性明度階梯（層次靠明度，不靠色相）：
 - **Dynamic Type 放大後**：列表標題在 AX 級距放寬到 2 行；按鈕用
   `.fixedSize(horizontal: false, vertical: true)` 讓高度隨文字增高，不要鎖固定高度。
 - **觸控目標全部 ≥44×44pt。**
-- **無障礙開關**：Reduce Transparency → 玻璃退化為不透明（**自訂玻璃必須自己補這個分支，
-  系統元件才會自動處理**）；Reduce Motion → 麥克風脈動停止；Increase Contrast → 描邊 2pt、
-  選中態改實心。
+- **無障礙開關**：Reduce Transparency → `.ultraThinMaterial` 系統自動變不透明；
+  首頁麥克風圓環是手繪 `strokeBorder`（不是 `Material`），系統不會自動處理，
+  已手動補上不透明分支（見 `HomeView.swift`）；Reduce Motion → 麥克風脈動停止；
+  Increase Contrast → 描邊 2pt、選中態改實心。
 
-## iOS 版本雙軌（落地前必讀）
+## iOS 版本：單軌，不分版本（2026-09-08 更新，取代原本的雙軌方案）
 
-1.0 已上架，`minimumOsVersion` = **iOS 17.0**，而 `glassEffect`／`ConcentricRectangle`／
-`tabBarMinimizeBehavior` **在 iOS 17 全部不存在**。現行決定是走雙軌（保留舊機型使用者）：
+1.0 已上架，`minimumOsVersion` = **iOS 17.0**。原本規劃 iOS 26+ 用真玻璃、17–25
+降級成 material 的雙軌方案，2026-09-08 在 iPhone 13 Pro Max（A15／iOS 26.6.1）
+實機量測後**全部作廢**：連 iOS 26 裝置跑真玻璃 tab bar 都會卡頓，問題出在玻璃本身
+的效能成本，不是「iOS 17 拿不到 API」。
 
-| 項目 | iOS 26+ | iOS 17–25 降級軌 |
-|------|---------|------------------|
-| Tab bar | 系統 `TabView` ＋ `.tabBarMinimizeBehavior(.onScrollDown)` | 系統 `TabView` 原生外觀；收合那行包 `if #available`，**不要自己刻假的收合動畫** |
-| 圓角容器 | `ConcentricRectangle(corners: .concentric)` | `RoundedRectangle(cornerRadius:style:.continuous)` |
-| 麥克風外環 | `.glassEffect(.regular, in: .circle)` 包在 `GlassEffectContainer` | `.background(Circle().fill(.ultraThinMaterial))` ＋ 同一組 hairline |
-| Sheet 圓角 | `.presentationCornerRadius(34)` | 同一行程式碼可用（iOS 16.4+） |
-| 陰影／hairline／圓角／字級落差 | 一致 | **一致——質感四規則與 iOS 版本無關，不因降級放寬** |
+**現行做法：全部 iOS 版本統一用同一套材質**（原本規劃給「iOS 17–25 降級軌」的那套）：
+
+| 項目 | 現行做法（不分 iOS 版本） |
+|------|------|
+| Tab bar | `TabView(selection:)` 管理分頁狀態 ＋ 手刻 `HStack`＋`Capsule`，材質 `.ultraThinMaterial` |
+| 圓角容器 | `RoundedRectangle(cornerRadius:style:.continuous)`（`ConcentricRectangle` 是 iOS 26+ API，未使用） |
+| 麥克風外環 | `.background(Circle().fill(.ultraThinMaterial))` ＋ hairline |
+| Sheet 圓角 | `.presentationCornerRadius(MM.R.xl)`（iOS 16.4+ API，本來就跟這次變更無關） |
+| 陰影／hairline／圓角／字級落差 | **一致——質感四規則與材質是否為玻璃無關，這條原本就成立，現在也不變** |
+
+完整量測記錄見 `ProjectDesignGuide/04-MeowMoney2.0-DesignSystem/README.md` §9，
+commit `8adc4d8`。
 
 ## Iteration Guide
 
@@ -367,13 +382,25 @@ Dark 的四階暖中性明度階梯（層次靠明度，不靠色相）：
    要做互動回饋時需要先補設計，不要自行發明。
 3. **`bg/gradient-top`／`bg/gradient-bot` 沒有 WCAG 驗算紀錄**，且已決定改平色。
    建議從 Figma 變數集合移除；`implementation.md` 的 `MM.background` 也要同步改成單一 `bgBase`。
-4. **README §6.6 的 tab bar 圓角（30/24→26/20）已失效**——改用系統 `TabView` 後，
-   app 端無法設定 tab bar 圓角。
+4. **README §6.6 的 tab bar 圓角（30/24→26/20）大部分已失效**——tab bar 視覺容器
+   是 `Capsule()`（全圓角膠囊，不是數字化的 corner radius），這幾個具體像素值
+   套不上去；但這**不是**因為改用系統原生 tab bar UI（它其實仍是手刻膠囊，
+   見下方「已於 2026-09-08 解決」）。
 5. **統計頁「用當月最大分類色極淡染背景（4–6%）」尚未實作**，列為可選的下一步。
-6. **全部設計尚未在模擬器實測**，對比值也**尚未在實機 P3 色域下目視確認**。
-   玻璃效果在截圖上看不出問題，要看動態。
-7. **iOS 17 雙軌方案雖已建議（方案 B），但尚未由使用者正式拍板。**
-   這件事沒決定之前，不要開始寫 Liquid Glass 的程式。
+6. 本檔的對比值**尚未在實機 P3 色域下目視確認**（跟玻璃無關，仍是未解決事項）。
+
+### 已於 2026-09-08 解決（原第 6～7 條）
+
+- ~~全部設計尚未在模擬器實測~~ → **已在實機測試**：iPhone 13 Pro Max（A15／
+  iOS 26.6.1）的四輪單一變因對照實驗，見 `README.md` §9。**模擬器測不出這類
+  GPU 效能問題**，這正是這次踩的坑——模擬器跑的是 Mac 的 GPU，不是裝置的 GPU。
+- ~~iOS 17 雙軌方案雖已建議（方案 B），但尚未拍板~~ → **兩個方案都沒有採用**：
+  實機量測發現連 iOS 26 裝置跑真玻璃都卡頓，問題在玻璃本身，不是 API 可用性。
+  最終改成全版本統一使用 `.ultraThinMaterial` ＋ hairline，見上方「iOS 版本：
+  單軌，不分版本」。
+- 附帶查明：tab bar 的視覺容器**一直都是手刻的 `HStack`＋`Capsule`**，不是切換到
+  系統原生 tab bar UI——`TabView` 只負責管理分頁選中狀態，這點過去的文件敘述
+  有誤（曾寫「改用系統 TabView 原生外觀」），已在 README／`implementation.md` 更正。
 
 ### 已於 2026-09-01 解決（原第 2～4 條）
 
