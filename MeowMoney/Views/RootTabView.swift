@@ -19,11 +19,13 @@ struct RootTabView: View {
             }
         }
 
-        var icon: String {
+        /// 選中態用 filled、未選中用 outline（材質版視覺規格 §1.0）：顏色不可是唯一的
+        /// 選中態信號，形狀（filled/outline）要一起變化。
+        func icon(selected: Bool) -> String {
             switch self {
-            case .home: "mic.fill"
-            case .records: "list.bullet.rectangle.portrait.fill"
-            case .stats: "chart.pie.fill"
+            case .home: selected ? "mic.fill" : "mic"
+            case .records: selected ? "list.bullet.rectangle.portrait.fill" : "list.bullet.rectangle.portrait"
+            case .stats: selected ? "chart.pie.fill" : "chart.pie"
             }
         }
     }
@@ -39,9 +41,7 @@ struct RootTabView: View {
 
             // 改用 TabView(selection:) 取代手工 switch：UITabBarController 會把三個
             // 分頁的 view controller 都留在記憶體裡，切分頁不再銷毀重建整棵 view tree
-            // （@Query 不重新 fetch、ScrollView 位置與 @State 都保留）。原本的
-            // withAnimation(MM.softPop) 留在按鈕上，效果是自訂膠囊選中態的滑動動畫，
-            // 跟系統的分頁內容轉場是兩件事，互不影響。
+            // （@Query 不重新 fetch、ScrollView 位置與 @State 都保留）。
             //
             // .safeAreaInset(edge: .bottom) { tabBar } 必須分別掛在「每個子畫面」上，
             // 不能只掛在 TabView 自己身上一次：TabView 底層是 UITabBarController，
@@ -73,30 +73,39 @@ struct RootTabView: View {
     private var tabBar: some View {
         HStack(spacing: 4) {
             ForEach(Tab.allCases, id: \.self) { item in
+                let isSelected = router.tab == item
+
                 Button {
-                    withAnimation(MM.softPop) { router.tab = item }
+                    // 導覽列的選中回饋必須是立即的。原本包 withAnimation(MM.softPop)
+                    // ＝ spring(response: 0.3)，底色與圖示都跟著彈簧跑，實機上讀起來
+                    // 像「延遲了一下」（2026-09-09 使用者實機回報）。Apple 與 LINE 的
+                    // tab bar 都是瞬間切換；按壓手感由 .squishy() 負責，不靠這裡。
+                    router.tab = item
                 } label: {
                     VStack(spacing: 4) {
-                        Image(systemName: item.icon)
+                        Image(systemName: item.icon(selected: isSelected))
                             .font(.system(size: 17, weight: .semibold))
                         // 導覽層 chrome：用 navFont 封頂 Dynamic Type，
                         // 否則 AX 級距會把這個固定高度的浮動膠囊撐爆（見 MM.navFont 註解）。
+                        // 選中態 Semibold／未選中 Regular（材質版視覺規格 §1.0）：這兩個字重
+                        // 是 PingFang 中文三個實體檔裡差距最大的一對，.bold／.heavy 對中文會
+                        // 靜默收斂成 semibold，不要換成那兩個。
                         Text(item.title)
-                            .font(MM.navFont(11, .semibold, relativeTo: .caption2))
+                            .font(MM.navFont(11, isSelected ? .semibold : .regular, relativeTo: .caption2))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    // 選中態底色（brandStrong）在 Dark 是亮珊瑚，白字只有 2.18:1——
-                    // 跟 RecordsView 加號按鈕同一個修正，改綁 textOnBrand。
-                    .foregroundStyle(router.tab == item ? MM.textOnBrand : MM.textSecondary)
+                    // 候選 A（全中性化，材質版視覺規格 §1.1）：選中態不出現任何品牌色，
+                    // 純靠中性明度差＋icon 形狀切換區分，跟 LINE tab bar 的一手觀察一致。
+                    .foregroundStyle(isSelected ? MM.textPrimary : MM.textSecondary)
                     .background(
                         Capsule()
-                            .fill(router.tab == item ? MM.brandStrong : .clear)
+                            .fill(isSelected ? (scheme == .dark ? MM.surfaceElevated : MM.surfaceTrack) : .clear)
                     )
                 }
                 .squishy()
                 .accessibilityLabel(item.title)
-                .accessibilityAddTraits(router.tab == item ? [.isSelected] : [])
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }
         .padding(6)
@@ -119,17 +128,11 @@ struct RootTabView: View {
         }
         .padding(.horizontal, 26)
         .padding(.bottom, 6)
-        .background {
-            // 捲動內容穿出膠囊兩側的淡出遮罩：material 穿透感較弱，邊緣容易被硬切。
-            LinearGradient(
-                colors: [MM.bgBase.opacity(0), MM.bgBase.opacity(0.92), MM.bgBase],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .padding(.top, -34)
-            .ignoresSafeArea(edges: .bottom)
-            .allowsHitTesting(false)
-        }
+        // 這裡曾經墊一層淡出漸層（末端是完全不透明的 bgBase），原本是 iOS 17 降級軌
+        // 專用、真玻璃軌會跳過。2026-09-08 移除玻璃時被誤改成無條件套用，
+        // 結果不透明的底色直接堵死 .ultraThinMaterial 的穿透感——使用者實機看到的是
+        // 一塊實色板子。材質要有半透明感就必須讓內容透得過來（參照使用者提供的
+        // LINE 實機錄影：內容直接跑到膠囊後方，沒有遮罩），所以整層移除。
     }
 }
 

@@ -75,11 +75,31 @@ struct RecordsView: View {
                 List {
                     ForEach(visibleGroups) { group in
                         Section {
-                            ForEach(group.items) { expense in
+                            // 每筆帳目維持各自獨立的 List row，`.onDelete`／滑動刪除
+                            // 才吃得到——單一 row 裡塞多筆項目時滑動手勢無法對應到
+                            // 「其中一筆」，這是上一輪材質版視覺的回歸（拿掉了已上架
+                            // 1.0 就有的滑動刪除）。視覺上要維持「整天一張卡」，改用
+                            // `.listRowBackground` 依位置給圓角：第一列圓上緣、最後
+                            // 一列圓下緣、中間不圓（`mmGroupedRow`），列與列之間交給
+                            // List 原生分隔線（`.listRowSeparatorTint`），最後一列的
+                            // 分隔線隱藏（那是卡片下緣，不是列之間的分界）。
+                            // 長按 context menu（`allowsContextMenu: true`）維持原本
+                            // 的刪除入口，滑動是補回來的第二個入口，不是取代。
+                            ForEach(Array(group.items.enumerated()), id: \.element.id) { index, expense in
+                                let isFirst = index == 0
+                                let isLast = index == group.items.count - 1
                                 ExpenseRow(expense: expense, allowsContextMenu: true)
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(
+                                        top: isFirst ? 4 : 0,
+                                        leading: 0,
+                                        bottom: isLast ? 4 : 0,
+                                        trailing: 0
+                                    ))
+                                    .listRowBackground(
+                                        Color.clear.mmGroupedRow(isFirst: isFirst, isLast: isLast)
+                                    )
+                                    .listRowSeparator(isLast ? .hidden : .visible)
+                                    .listRowSeparatorTint(MM.hairline)
                             }
                             .onDelete { offsets in
                                 delete(offsets, in: group)
@@ -103,6 +123,15 @@ struct RecordsView: View {
         .sheet(isPresented: $showManualSheet) {
             EntrySheet(mode: .manual)
         }
+    }
+
+    /// 對應 1.0 既有的 `delete(_:in:)`（見 `origin/main:Views/RecordsView.swift`）：
+    /// `offsets` 是相對於這一天分組內的索引，不是整個 `expenses` 陣列。
+    private func delete(_ offsets: IndexSet, in group: DayGroup) {
+        for index in offsets {
+            context.delete(group.items[index])
+        }
+        try? context.save()
     }
 
     // MARK: - 分頁footer（階段1規格 §2.3、§2.4）
@@ -200,13 +229,6 @@ struct RecordsView: View {
         if calendar.isDateInToday(date) { return "今天" }
         if calendar.isDateInYesterday(date) { return "昨天" }
         return date.formatted(.dateTime.month().day().weekday(.abbreviated).locale(Locale(identifier: "zh_TW")))
-    }
-
-    private func delete(_ offsets: IndexSet, in group: DayGroup) {
-        for index in offsets {
-            context.delete(group.items[index])
-        }
-        try? context.save()
     }
 }
 

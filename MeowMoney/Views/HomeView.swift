@@ -223,11 +223,18 @@ struct HomeView: View {
                 )
                 .mmCard(padding: 12)
             } else {
-                VStack(spacing: 8) {
-                    ForEach(expenses.prefix(4)) { expense in
+                // 最多 4 筆包在一個分組容器裡，列與列之間用 Divider 分隔，
+                // 不再逐列各自套殼（材質版視覺規格 §2.2）。
+                let recent = Array(expenses.prefix(4))
+                VStack(spacing: 0) {
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { index, expense in
                         ExpenseRow(expense: expense)
+                        if index < recent.count - 1 {
+                            Divider().background(MM.hairline)
+                        }
                     }
                 }
+                .mmCard(padding: 0)
             }
         }
     }

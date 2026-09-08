@@ -110,7 +110,9 @@ struct ExpenseRow: View {
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 14)
-            .mmRow(padding: 0, cornerRadius: MM.R.md)
+            // 分組容器（外層 mmCard）才是視覺邊界，這裡不再各自套殼
+            // （材質版視覺規格 §2.2）。
+            .mmListItem(padding: 0)
         }
         .buttonStyle(.plain)
         .squishy()

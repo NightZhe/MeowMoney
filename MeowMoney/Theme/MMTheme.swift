@@ -14,6 +14,10 @@ enum MM {
     static let bgBase       = Color("bg/base")
     static let surfaceCard  = Color("surface/card")
     static let surfaceTrack = Color("surface/track")
+    /// 浮起層，暗色四階明度梯的第三階（README §2）。**只在 Dark 用**——Light 沒有對應值，
+    /// 這個 token 就是一個單一色值（不是 Light/Dark 對），呼叫端自行判斷何時用它，
+    /// 不要期待它像其他 token 一樣自動跟系統外觀切換。
+    static let surfaceElevated = Color("surface/elevated")
     static let hairline     = Color("border/hairline")
 
     // MARK: - 文字
@@ -216,5 +220,32 @@ extension View {
     /// 同一套 hairline＋陰影規則，只是形狀換成 `Capsule`（驗收退回 BUG-3）。
     func mmPill(padding: CGFloat = 0) -> some View {
         modifier(MMSurface(shape: Capsule(), padding: padding, isCard: false))
+    }
+
+    /// 分組列表內的單列（材質版視覺規格 §2.2）：無 fill／無陰影／無 hairline，
+    /// 純粹負責 padding。外層分組容器（`mmCard(padding: 0)`）才是視覺邊界，
+    /// 列與列之間靠 `Divider()` 分隔，個別列不再各自套殼。
+    func mmListItem(padding: CGFloat = 0) -> some View {
+        self.padding(padding)
+    }
+
+    /// `RecordsView` 帳本列表：每一列仍是獨立的 List row（`.onDelete`／滑動刪除才有作用），
+    /// 但視覺上要接成「整天一張卡」——`isFirst`／`isLast` 決定這一列該圓哪個角，
+    /// 中間列四角都是 0，兩者皆真（單列卡）就四角都圓。跟 `mmCard`／`mmRow` 同一套
+    /// fill／hairline／Dark 上緣高光（`MMSurface`），只是形狀換成依位置算的
+    /// `UnevenRoundedRectangle`，且用 `isCard: false` 的收斂陰影值——List 環境裡每列
+    /// 有各自的 row bounds，陰影會被裁在自己的列高裡，接起來的中間列因此看不太出來，
+    /// 但跟其他列表列（`mmRow`）維持同一套規則，不用另外發明一份不畫陰影的版本
+    /// （2026-09-08，恢復滑動刪除的同時保留材質版整天一張卡視覺）。
+    func mmGroupedRow(isFirst: Bool, isLast: Bool) -> some View {
+        let radius = MM.R.lg
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: isFirst ? radius : 0,
+            bottomLeadingRadius: isLast ? radius : 0,
+            bottomTrailingRadius: isLast ? radius : 0,
+            topTrailingRadius: isFirst ? radius : 0,
+            style: .continuous
+        )
+        return modifier(MMSurface(shape: shape, padding: 0, isCard: false))
     }
 }
