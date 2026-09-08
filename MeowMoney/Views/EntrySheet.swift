@@ -628,11 +628,7 @@ struct EntrySheet: View {
         .padding(.top, 10)
         .padding(.bottom, 14)
         .background {
-            if #available(iOS 26, *) {
-                Rectangle().fill(.clear).glassEffect(.regular, in: .rect)
-            } else {
-                Rectangle().fill(.ultraThinMaterial)
-            }
+            Rectangle().fill(.ultraThinMaterial)
         }
     }
 
@@ -867,16 +863,10 @@ struct EntrySheet: View {
         .padding(.horizontal, 22)
         .padding(.top, 10)
         .padding(.bottom, 14)
-        // Liquid Glass 雙軌（Glass實作規格.md §3.2）：Rectangle 而非帶圓角形狀——
-        // saveBar 貼齊 sheet 左右與底部安全區，圓角由 sheet 本身的 presentationCornerRadius 負責。
+        // Rectangle 而非帶圓角形狀——saveBar 貼齊 sheet 左右與底部安全區，
+        // 圓角由 sheet 本身的 presentationCornerRadius 負責。
         .background {
-            if #available(iOS 26, *) {
-                // 同 RootTabView 的修正：Rectangle() 需要透明填色，
-                // 否則預設前景色會蓋住玻璃效果（見 Glass實作規格.md 修正記錄）。
-                Rectangle().fill(.clear).glassEffect(.regular, in: .rect)
-            } else {
-                Rectangle().fill(.ultraThinMaterial)
-            }
+            Rectangle().fill(.ultraThinMaterial)
         }
     }
 

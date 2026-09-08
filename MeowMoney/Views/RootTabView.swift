@@ -32,18 +32,39 @@ struct RootTabView: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        @Bindable var router = router
+
         ZStack {
             MM.bgBase.ignoresSafeArea()
 
-            Group {
-                switch router.tab {
-                case .home: HomeView()
-                case .records: RecordsView()
-                case .stats: StatsView()
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                tabBar
+            // 改用 TabView(selection:) 取代手工 switch：UITabBarController 會把三個
+            // 分頁的 view controller 都留在記憶體裡，切分頁不再銷毀重建整棵 view tree
+            // （@Query 不重新 fetch、ScrollView 位置與 @State 都保留）。原本的
+            // withAnimation(MM.softPop) 留在按鈕上，效果是自訂膠囊選中態的滑動動畫，
+            // 跟系統的分頁內容轉場是兩件事，互不影響。
+            //
+            // .safeAreaInset(edge: .bottom) { tabBar } 必須分別掛在「每個子畫面」上，
+            // 不能只掛在 TabView 自己身上一次：TabView 底層是 UITabBarController，
+            // 每個分頁是獨立的 child view controller，各自有自己的安全區域計算，
+            // 掛在 TabView 外層時這個安全區域不會確實傳進每個分頁內部的
+            // List／ScrollView——實測結果是 RecordsView 分頁到底時「看更多」按鈕
+            // 疊在膠囊底下、完全點不到（膠囊在觸控 z-order 上優先）。分別掛在三個
+            // 子畫面上，各自的捲動內容才會確實把底部安全區域讓出來。
+            TabView(selection: $router.tab) {
+                HomeView()
+                    .tag(Tab.home)
+                    // 系統原生 tab bar 必須在「子畫面」上隱藏才會生效——下在 TabView
+                    // 自己身上不會生效。畫面上只能有下面 tabBar 那個自訂玻璃膠囊。
+                    .toolbar(.hidden, for: .tabBar)
+                    .safeAreaInset(edge: .bottom) { tabBar }
+                RecordsView()
+                    .tag(Tab.records)
+                    .toolbar(.hidden, for: .tabBar)
+                    .safeAreaInset(edge: .bottom) { tabBar }
+                StatsView()
+                    .tag(Tab.stats)
+                    .toolbar(.hidden, for: .tabBar)
+                    .safeAreaInset(edge: .bottom) { tabBar }
             }
         }
         .environment(router)
@@ -79,50 +100,35 @@ struct RootTabView: View {
             }
         }
         .padding(6)
-        // Liquid Glass 雙軌（Glass實作規格.md §2.2）：iOS 26 用真玻璃，
-        // iOS 17–25 降級成 ultraThinMaterial + hairline 描邊。
+        // 材質膠囊：ultraThinMaterial + hairline 描邊。
+        // 原本 iOS 26 走 .glassEffect 真玻璃，2026-09-08 在 iPhone 13 Pro Max
+        // （A15／iOS 26.6.1）實機量測後移除——見下方註解。
         .background {
-            if #available(iOS 26, *) {
-                // Capsule() 當 View 用時預設會用前景色（primary）填滿自身，
-                // glassEffect 疊在這個不透明底上等於被蓋住（渲染成灰色板子）。
-                // 用 .fill(.clear) 讓形狀本身透明，只留幾何當 glassEffect 的遮罩。
-                Capsule()
-                    .fill(.clear)
-                    .glassEffect(.regular, in: .capsule)
-                    // 玻璃本身已有邊緣高光，不額外疊 stroke，避免畫蛇添足。
-            } else {
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Capsule().strokeBorder(
-                            scheme == .dark ? MM.glassRegularStroke : MM.hairline,
-                            lineWidth: 1
-                        )
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Capsule().strokeBorder(
+                        scheme == .dark ? MM.glassRegularStroke : MM.hairline,
+                        lineWidth: 1
                     )
-                    .shadow(
-                        color: scheme == .dark ? .clear : MM.cardShadowLight.opacity(0.10),
-                        radius: 14, x: 0, y: 6
-                    )
-            }
+                )
+                .shadow(
+                    color: scheme == .dark ? .clear : MM.cardShadowLight.opacity(0.10),
+                    radius: 14, x: 0, y: 6
+                )
         }
         .padding(.horizontal, 26)
         .padding(.bottom, 6)
         .background {
-            // 捲動內容穿出膠囊兩側的淡出遮罩：只有 iOS 17–25 降級軌需要
-            // （material 穿透感較弱，邊緣容易被硬切）。iOS 26 真玻璃本身會自然融合
-            // 捲動內容，疊一層不透明漸層等於蓋住玻璃該有的穿透感（Glass 規格 §2.2）。
-            if #available(iOS 26, *) {
-                EmptyView()
-            } else {
-                LinearGradient(
-                    colors: [MM.bgBase.opacity(0), MM.bgBase.opacity(0.92), MM.bgBase],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .padding(.top, -34)
-                .ignoresSafeArea(edges: .bottom)
-                .allowsHitTesting(false)
-            }
+            // 捲動內容穿出膠囊兩側的淡出遮罩：material 穿透感較弱，邊緣容易被硬切。
+            LinearGradient(
+                colors: [MM.bgBase.opacity(0), MM.bgBase.opacity(0.92), MM.bgBase],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .padding(.top, -34)
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
         }
     }
 }

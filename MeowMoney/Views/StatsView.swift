@@ -15,25 +15,40 @@ struct StatsView: View {
         expenses.filter { calendar.isDate($0.date, equalTo: anchorMonth, toGranularity: .month) }
     }
 
-    private var spent: Decimal {
-        monthExpenses.filter { !$0.isIncome }.reduce(Decimal(0)) { $0 + $1.amount }
-    }
-
-    private var income: Decimal {
-        monthExpenses.filter(\.isIncome).reduce(Decimal(0)) { $0 + $1.amount }
-    }
-
     private struct Slice: Identifiable {
         let category: ExpenseCategory
         let total: Decimal
+        let ratio: Double
         var id: String { category.rawValue }
     }
 
-    private var slices: [Slice] {
-        let buckets = Dictionary(grouping: monthExpenses.filter { !$0.isIncome }) { $0.category }
-        return buckets
-            .map { Slice(category: $0.key, total: $0.value.reduce(Decimal(0)) { $0 + $1.amount }) }
+    private struct MonthSummary {
+        let spent: Decimal
+        let income: Decimal
+        let slices: [Slice]
+    }
+
+    /// 原本 spent／income／slices 各自獨立呼叫 `monthExpenses`（等於對同一批資料
+    /// 過濾三次），改成單次迴圈同時累加三者，body 每次重算只走一遍 `monthExpenses`。
+    private var monthSummary: MonthSummary {
+        var spent = Decimal(0)
+        var income = Decimal(0)
+        var buckets: [ExpenseCategory: Decimal] = [:]
+        for expense in monthExpenses {
+            if expense.isIncome {
+                income += expense.amount
+            } else {
+                spent += expense.amount
+                buckets[expense.category, default: Decimal(0)] += expense.amount
+            }
+        }
+        let spentDouble = spent.doubleValue
+        let slices = buckets
+            .map { category, total in
+                Slice(category: category, total: total, ratio: spentDouble > 0 ? total.doubleValue / spentDouble : 0)
+            }
             .sorted { $0.total > $1.total }
+        return MonthSummary(spent: spent, income: income, slices: slices)
     }
 
     /// 08「本月的發現」。純本地同步計算，資料不足回傳空陣列（見 `insightsSection`）。
@@ -42,14 +57,20 @@ struct StatsView: View {
     }
 
     var body: some View {
+        // 兩者都只在這裡各算一次，往下用參數傳遞——避免 body 重算時
+        // monthSummary／insights 這兩個 computed property 在不同子畫面裡被重複呼叫
+        // （insights 尤其貴：跑一次 InsightEngine 演算法）。
+        let summary = monthSummary
+        let currentInsights = insights
+
         ScrollView {
             VStack(spacing: 20) {
                 monthSwitcher
-                balanceCard
+                balanceCard(summary: summary)
                 // 位置：結餘卡之後、分類清單之前——**與規格本文不同**，以使用者定案的附錄為準
                 // （階段2-3規格 附錄「使用者定案」第 2 項：先看自己的數字，再看 App 的解讀）。
-                insightsSection
-                breakdown
+                insightsSection(currentInsights)
+                breakdown(summary: summary)
             }
             .padding(.horizontal, 22)
             .padding(.top, 8)
@@ -62,7 +83,7 @@ struct StatsView: View {
     /// 資料不足時整段（含標題）都不渲染——不是空狀態，是完全不存在，
     /// 避免「這個月還沒有發現」這種廢話（規格 §4.2）。
     @ViewBuilder
-    private var insightsSection: some View {
+    private func insightsSection(_ insights: [Insight]) -> some View {
         if !insights.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 SectionHeader(text: "本月的發現")
@@ -170,15 +191,15 @@ struct StatsView: View {
         .squishy()
     }
 
-    private var balanceCard: some View {
+    private func balanceCard(summary: MonthSummary) -> some View {
         VStack(spacing: 14) {
             HStack(spacing: 0) {
-                statColumn(title: "支出", value: spent, color: MM.expense)
+                statColumn(title: "支出", value: summary.spent, color: MM.expense)
                 Rectangle().fill(MM.hairline).frame(width: 1, height: 40)
-                statColumn(title: "收入", value: income, color: MM.income)
+                statColumn(title: "收入", value: summary.income, color: MM.income)
             }
 
-            let net = income - spent
+            let net = summary.income - summary.spent
             HStack(spacing: 6) {
                 // 跟金額欄同一個 HStack、金額欄拿 layoutPriority(1)：極端月結餘
                 // （最大 AX 級距＋10 位數以上）下這顆標籤原本沒有任何保護，
@@ -229,11 +250,11 @@ struct StatsView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var breakdown: some View {
+    private func breakdown(summary: MonthSummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(text: "花在哪裡", trailing: slices.isEmpty ? nil : "\(slices.count) 個分類")
+            SectionHeader(text: "花在哪裡", trailing: summary.slices.isEmpty ? nil : "\(summary.slices.count) 個分類")
 
-            if slices.isEmpty {
+            if summary.slices.isEmpty {
                 CuteEmptyState(
                     title: "這個月還沒有支出",
                     subtitle: "很省喔，貓貓幫你拍拍手 👏"
@@ -241,7 +262,7 @@ struct StatsView: View {
                 .mmCard(padding: 12)
             } else {
                 VStack(spacing: 14) {
-                    ForEach(slices) { slice in
+                    ForEach(summary.slices) { slice in
                         sliceRow(slice)
                     }
                 }
@@ -251,7 +272,7 @@ struct StatsView: View {
     }
 
     private func sliceRow(_ slice: Slice) -> some View {
-        let ratio = spent > 0 ? slice.total.doubleValue / spent.doubleValue : 0
+        let ratio = slice.ratio
         return VStack(spacing: 6) {
             HStack(spacing: 8) {
                 // 分類 emoji 本階段維持（emoji→SF Symbols 是既定改動，但不在本次三項範圍內）

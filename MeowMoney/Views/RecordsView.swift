@@ -13,8 +13,23 @@ struct RecordsView: View {
     private struct DayGroup: Identifiable {
         let id: Date
         let items: [Expense]
-        var spent: Decimal { items.filter { !$0.isIncome }.reduce(Decimal(0)) { $0 + $1.amount } }
-        var income: Decimal { items.filter(\.isIncome).reduce(Decimal(0)) { $0 + $1.amount } }
+        let spent: Decimal
+        let income: Decimal
+
+        /// spent／income 原本是各自獨立過濾 items 的 computed property，且每次被讀取
+        /// 都重算一次；dayHeader 同時讀兩者等於一天的資料被過濾兩次。改成建構時
+        /// 單次迴圈算好、存成值，之後讀取是 O(1)。
+        init(id: Date, items: [Expense]) {
+            self.id = id
+            self.items = items
+            var spent = Decimal(0)
+            var income = Decimal(0)
+            for item in items {
+                if item.isIncome { income += item.amount } else { spent += item.amount }
+            }
+            self.spent = spent
+            self.income = income
+        }
     }
 
     private var groups: [DayGroup] {

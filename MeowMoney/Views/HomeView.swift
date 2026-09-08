@@ -11,31 +11,46 @@ struct HomeView: View {
 
     private var calendar: Calendar { .current }
 
-    private var todayExpenses: [Expense] {
-        expenses.filter { calendar.isDateInToday($0.date) }
+    private struct TodaySummary {
+        let hasAny: Bool
+        let spent: Decimal
     }
 
-    private var todaySpent: Decimal {
-        todayExpenses.filter { !$0.isIncome }.reduce(Decimal(0)) { $0 + $1.amount }
+    private struct MonthSummary {
+        let spent: Decimal
+        let income: Decimal
     }
 
-    private var monthSpent: Decimal {
-        expenses
-            .filter { !$0.isIncome && calendar.isDate($0.date, equalTo: Date(), toGranularity: .month) }
-            .reduce(Decimal(0)) { $0 + $1.amount }
+    /// 原本 todayExpenses／todaySpent 各自過濾一次今天的資料，改成單次迴圈同時
+    /// 算出「今天有沒有帳」與「今天花了多少」。
+    private var todaySummary: TodaySummary {
+        var spent = Decimal(0)
+        var hasAny = false
+        for expense in expenses where calendar.isDateInToday(expense.date) {
+            hasAny = true
+            if !expense.isIncome { spent += expense.amount }
+        }
+        return TodaySummary(hasAny: hasAny, spent: spent)
     }
 
-    private var monthIncome: Decimal {
-        expenses
-            .filter { $0.isIncome && calendar.isDate($0.date, equalTo: Date(), toGranularity: .month) }
-            .reduce(Decimal(0)) { $0 + $1.amount }
+    /// 原本 monthSpent／monthIncome 各自對 `expenses` 全量過濾一次，改成單次迴圈。
+    private var monthSummary: MonthSummary {
+        var spent = Decimal(0)
+        var income = Decimal(0)
+        for expense in expenses where calendar.isDate(expense.date, equalTo: Date(), toGranularity: .month) {
+            if expense.isIncome { income += expense.amount } else { spent += expense.amount }
+        }
+        return MonthSummary(spent: spent, income: income)
     }
 
     var body: some View {
+        let today = todaySummary
+        let month = monthSummary
+
         ScrollView {
             VStack(spacing: 22) {
-                header
-                summaryCard
+                header(hasExpenseToday: today.hasAny)
+                summaryCard(today: today, month: month)
                 micSection
                 recentSection
             }
@@ -53,7 +68,7 @@ struct HomeView: View {
 
     // MARK: - 區塊
 
-    private var header: some View {
+    private func header(hasExpenseToday: Bool) -> some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(greeting)
@@ -64,7 +79,7 @@ struct HomeView: View {
                     .foregroundStyle(MM.textSecondary)
             }
             Spacer()
-            CatFaceView(mood: todayExpenses.isEmpty ? .sleepy : .idle, size: 54)
+            CatFaceView(mood: hasExpenseToday ? .idle : .sleepy, size: 54)
         }
     }
 
@@ -79,7 +94,7 @@ struct HomeView: View {
         }
     }
 
-    private var summaryCard: some View {
+    private func summaryCard(today: TodaySummary, month: MonthSummary) -> some View {
         VStack(spacing: 16) {
             VStack(spacing: 4) {
                 Text("今天花了")
@@ -90,7 +105,7 @@ struct HomeView: View {
                     Text("$")
                         .font(MM.font(20, .bold, relativeTo: .title3))
                         .foregroundStyle(MM.textSecondary)
-                    Text(Money.string(todaySpent))
+                    Text(Money.string(today.spent))
                         .font(MM.font(52, .heavy, relativeTo: .largeTitle))
                         .tracking(-1.56) // −3%
                         .monospacedDigit()
@@ -104,11 +119,11 @@ struct HomeView: View {
             Divider().background(MM.hairline)
 
             HStack(spacing: 0) {
-                miniStat(title: "本月支出", value: monthSpent, color: MM.expense)
+                miniStat(title: "本月支出", value: month.spent, color: MM.expense)
                 Rectangle()
                     .fill(MM.hairline)
                     .frame(width: 1, height: 34)
-                miniStat(title: "本月收入", value: monthIncome, color: MM.income)
+                miniStat(title: "本月收入", value: month.income, color: MM.income)
             }
         }
         .mmCard(padding: 20)
@@ -150,14 +165,10 @@ struct HomeView: View {
                     // 中間那圈是全 app 唯一的自訂玻璃（README §0；Glass實作規格.md §5）。
                     Group {
                         if reduceTransparency {
-                            // 兩軌、RT 開啟時共用同一種降級：純 hairline，不追求玻璃感。
+                            // Reduce Transparency 開啟：純 hairline，不追求材質感。
                             Circle().strokeBorder(MM.hairline, lineWidth: 1)
-                        } else if #available(iOS 26, *) {
-                            Circle()
-                                .strokeBorder(MM.brandFill.opacity(0.30), lineWidth: 1)
-                                .glassEffect(.regular, in: .circle)
                         } else {
-                            // iOS 17–25：material 圓環，不是純色線稿——否則退化軌完全沒有「玻璃感」。
+                            // material 圓環，不是純色線稿——否則完全沒有層次感。
                             Circle()
                                 .fill(.ultraThinMaterial)
                                 .overlay(Circle().strokeBorder(MM.brandFill.opacity(0.30), lineWidth: 1))
