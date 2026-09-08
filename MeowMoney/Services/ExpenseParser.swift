@@ -54,9 +54,11 @@ enum ExpenseParser {
 
     /// 把「早餐五十 捷運三十 午餐一百二」這種一次講好幾筆的話，切成多個 `ParsedEntry`。
     ///
-    /// 切句規則刻意保守：只認停頓（空白/換行）與常見的列舉型標點（、，。；），
-    /// **不**嘗試理解「一百二十塊的午餐和三十塊的捷運」這種需要語意判斷的句子——
-    /// 切錯了會比不切更糟。每一段都直接丟給既有的 `parse`，核心解析邏輯不重寫。
+    /// 也切得開語音辨識輸出的「午餐300晚餐500」——中文語音辨識不會插入空白或標點，
+    /// 所以除了停頓與標點，還會找「金額結束、後面又接非金額文字」的邊界（見
+    /// `splitByAmountBoundaries`）。**不**嘗試理解「一百二十塊的午餐和三十塊的捷運」
+    /// 這種金額在前、需要語意判斷的句子——切錯了會比不切更糟。
+    /// 每一段都直接丟給既有的 `parse`，核心解析邏輯不重寫。
     ///
     /// - 單句輸入（切不出第二段）回傳單一元素，結果與直接呼叫 `parse` 相同。
     /// - 完全沒有內容（空字串、純空白、純標點）回傳空陣列，不回傳「空的一筆」。
@@ -76,7 +78,15 @@ enum ExpenseParser {
         "、", "，", "。", "；", ";"
     ]
 
+    /// 兩階段切句：
+    /// 1. 先照停頓（空白/換行）與列舉標點切——使用者若真的有停頓，那是最可靠的訊號。
+    /// 2. 每一段再照「金額邊界」切——中文語音辨識**不會**插入空白或標點，
+    ///    實機存下的 transcript 長這樣：`午餐300晚餐500`、`午餐200晚餐300宵夜200`。
     static func splitIntoSentences(_ raw: String) -> [String] {
+        splitByExplicitSeparators(raw).flatMap(splitByAmountBoundaries)
+    }
+
+    private static func splitByExplicitSeparators(_ raw: String) -> [String] {
         var segments: [String] = []
         var current = ""
         for char in raw {
@@ -93,6 +103,147 @@ enum ExpenseParser {
             segments.append(current)
         }
         return segments
+    }
+
+    // MARK: - 無分隔符切句
+
+    /// 接在數字後面、代表「這個數字不是一筆帳的金額」或「數字還沒講完」的字。
+    /// 例：「3月8號」的月、「30度」的度、「300多」的多。碰到這些字就不切。
+    private static let amountContinuationCharacters: Set<Character> = [
+        "月", "日", "號", "年", "時", "分", "秒", "半",
+        "多", "幾", "成", "折", "樓", "層", "歲", "度", "倍", "週", "周",
+        "公", "克", "斤", "磅", "升", "米", "尺", "吋", "%", "％"
+    ]
+
+    /// 第一個字雖然落在量詞/延續字裡，但兩個字合起來是一般詞彙，不該擋住切句。
+    /// 例：「點」是量詞（三點），但「點心」是品項。
+    private static let continuationExceptions: Set<String> = ["點心", "包子"]
+
+    /// 不可能當品項開頭的虛字。擋住這些字是為了保留「一百二十塊的午餐和三十塊的捷運」
+    /// 這種「金額在前」的句子的既有行為——那需要語意理解，切了只會把品項配錯金額。
+    private static let boundaryStopwords: Set<Character> = ["的", "之"]
+
+    /// 在沒有任何分隔符的口語裡切出多筆。核心模式是 `[品項][金額][品項][金額]…`：
+    /// 一段數字（含幣別後綴）結束後，若接的是不屬於量詞/單位/虛字的文字，
+    /// **而且後面還存在另一個金額**，就在這裡切一刀。
+    ///
+    /// 刻意保守——「寧可少切，不可切錯」：
+    /// - 後面沒有第二個金額就不切（「午餐300很好吃」維持一筆，金額仍是 300）。
+    /// - 數字後面接量詞就不切（「買了3個便當共300」是一筆）。
+    static func splitByAmountBoundaries(_ segment: String) -> [String] {
+        let chars = Array(segment)
+        guard chars.count > 1 else { return chars.isEmpty ? [] : [segment] }
+        // 偵測用副本：只把全形阿拉伯數字換成半形，長度 1:1，索引才對得上原字串。
+        let probe = chars.map(halfWidthDigit)
+
+        var pieces: [String] = []
+        var pieceStart = 0
+        var index = 0
+        while index < probe.count {
+            guard ChineseNumberParser.isNumericCharacter(probe[index]) else {
+                index += 1
+                continue
+            }
+            let runEnd = numericRunEnd(in: probe, from: index)
+            guard let value = numericValue(in: probe, from: index, to: runEnd), value > 0 else {
+                index = max(runEnd, index + 1)
+                continue
+            }
+            let boundary = amountEnd(in: probe, runEnd: runEnd)
+            if boundary < probe.count, isBoundary(in: probe, at: boundary) {
+                pieces.append(String(chars[pieceStart..<boundary]))
+                pieceStart = boundary
+            }
+            index = max(runEnd, index + 1)
+        }
+        if pieceStart < chars.count {
+            pieces.append(String(chars[pieceStart...]))
+        }
+        return pieces.filter { !$0.isEmpty }
+    }
+
+    /// 數字片段的結束位置（exclusive）。夾在阿拉伯數字之間的半形逗號算數字的一部分。
+    private static func numericRunEnd(in chars: [Character], from start: Int) -> Int {
+        var end = start
+        while end < chars.count {
+            if ChineseNumberParser.isNumericCharacter(chars[end]) {
+                end += 1
+            } else if chars[end] == ",",
+                      end > start,
+                      end + 1 < chars.count,
+                      isArabicDigit(chars[end - 1]),
+                      isArabicDigit(chars[end + 1]) {
+                end += 1
+            } else {
+                break
+            }
+        }
+        // 去掉尾端多餘的小數點，例如「100.」
+        while end > start, chars[end - 1] == "." { end -= 1 }
+        return end
+    }
+
+    private static func numericValue(in chars: [Character], from start: Int, to end: Int) -> Decimal? {
+        guard end > start else { return nil }
+        let digits = String(chars[start..<end]).replacingOccurrences(of: ",", with: "")
+        return ChineseNumberParser.value(of: digits)
+    }
+
+    /// 把幣別後綴一併算進金額範圍，這樣「午餐300元晚餐500」會切在「元」之後。
+    private static func amountEnd(in chars: [Character], runEnd: Int) -> Int {
+        var end = runEnd
+        guard end < chars.count else { return end }
+        let next = chars[end]
+        if next == "k" || next == "K" {
+            end += 1
+        } else if currencySuffixes.contains(next) {
+            end += 1
+            if end < chars.count, chars[end] == "錢" || chars[end] == "整" { end += 1 }
+        }
+        return end
+    }
+
+    private static func isBoundary(in chars: [Character], at index: Int) -> Bool {
+        let next = chars[index]
+        // 數字沒切乾淨（例如「300元500」）就保守不切。
+        if ChineseNumberParser.isNumericCharacter(next) { return false }
+        if next == "," || next == "." { return false }
+        if boundaryStopwords.contains(next) { return false }
+        if amountContinuationCharacters.contains(next) || counterWords.contains(next) {
+            let pair = index + 1 < chars.count ? String([next, chars[index + 1]]) : String(next)
+            if !continuationExceptions.contains(pair) { return false }
+        }
+        // 後面必須還有另一筆金額，否則寧可不切。
+        return containsAmount(in: chars, from: index)
+    }
+
+    private static func containsAmount(in chars: [Character], from start: Int) -> Bool {
+        var index = start
+        while index < chars.count {
+            guard ChineseNumberParser.isNumericCharacter(chars[index]) else {
+                index += 1
+                continue
+            }
+            let runEnd = numericRunEnd(in: chars, from: index)
+            if let value = numericValue(in: chars, from: index, to: runEnd), value > 0 {
+                return true
+            }
+            index = max(runEnd, index + 1)
+        }
+        return false
+    }
+
+    private static func isArabicDigit(_ c: Character) -> Bool {
+        c.isASCII && c.isNumber
+    }
+
+    /// 全形阿拉伯數字 → 半形。其餘字元原樣回傳，維持 1:1 的長度。
+    private static func halfWidthDigit(_ c: Character) -> Character {
+        guard c.unicodeScalars.count == 1,
+              let scalar = c.unicodeScalars.first,
+              (0xFF10...0xFF19).contains(scalar.value),
+              let converted = Unicode.Scalar(scalar.value - 0xFF10 + 0x30) else { return c }
+        return Character(converted)
     }
 
     // MARK: - 正規化

@@ -266,4 +266,149 @@ final class ExpenseParserTests: XCTestCase {
         XCTAssertEqual(result.count, 1)
         XCTAssertEqual(result.first?.amount, 3280)
     }
+
+    // MARK: - 無分隔符的真實語音輸入（07 修正）
+    //
+    // 以下四個字串是從使用者 iPhone 的 SwiftData store 撈出來的實際 `Expense.transcript`，
+    // 一個空白、一個標點都沒有。舊版切句只認空白與標點，所以這些輸入從來沒被切開過。
+
+    func testRealTranscriptTwoEntries() {
+        let result = parseMultiple("午餐300晚餐500")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result.map(\.amount), [300, 500])
+        XCTAssertEqual(result.map(\.note), ["午餐", "晚餐"])
+        XCTAssertEqual(result.map(\.category), [.food, .food])
+    }
+
+    func testRealTranscriptThreeEntries() {
+        let result = parseMultiple("午餐200晚餐300宵夜200")
+        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(result.map(\.amount), [200, 300, 200])
+        XCTAssertEqual(result.map(\.note), ["午餐", "晚餐", "宵夜"])
+    }
+
+    func testRealTranscriptTwoEntriesShortAmounts() {
+        let result = parseMultiple("午餐120晚餐200")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result.map(\.amount), [120, 200])
+        XCTAssertEqual(result.map(\.note), ["午餐", "晚餐"])
+    }
+
+    func testRealTranscriptThreeEntriesOutOfOrder() {
+        let result = parseMultiple("午餐300宵夜200晚餐500")
+        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(result.map(\.amount), [300, 200, 500])
+        XCTAssertEqual(result.map(\.note), ["午餐", "宵夜", "晚餐"])
+    }
+
+    /// 每一段自己的 transcript 要是自己的片段（「重新解析」功能依賴這個行為）。
+    func testRealTranscriptKeepsPerEntryTranscript() {
+        let result = parseMultiple("午餐300晚餐500")
+        XCTAssertEqual(result.map(\.transcript), ["午餐300", "晚餐500"])
+    }
+
+    // MARK: - 無分隔符的邊界情況
+
+    /// 量詞：「3個」是數量不是金額，不可以在這裡切。
+    func testNoSplitOnCounterWord() {
+        let result = parseMultiple("買了3個便當共300")
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.amount, 300)
+    }
+
+    /// 千分位逗號在沒有分隔符的句子裡仍然不是句界。
+    func testSplitsAfterThousandSeparatorAmountOnly() {
+        let result = parseMultiple("買球鞋3,280元晚餐500")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result.map(\.amount), [3280, 500])
+    }
+
+    /// 幣別單位（元／塊／塊錢）屬於金額的一部分，切點要在單位之後。
+    func testSplitsAfterCurrencySuffix() {
+        XCTAssertEqual(parseMultiple("午餐300元晚餐500").map(\.amount), [300, 500])
+        XCTAssertEqual(parseMultiple("午餐300塊晚餐500").map(\.amount), [300, 500])
+        XCTAssertEqual(parseMultiple("午餐300塊錢晚餐500").map(\.amount), [300, 500])
+    }
+
+    /// 中文數字（含台灣口語省略「一百二」＝120）也要切得開。
+    func testSplitsChineseNumeralsWithoutSeparator() {
+        let result = parseMultiple("午餐一百二晚餐三百")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result.map(\.amount), [120, 300])
+
+        let commute = parseMultiple("早餐五十捷運三十")
+        XCTAssertEqual(commute.count, 2)
+        XCTAssertEqual(commute.map(\.amount), [50, 30])
+        XCTAssertEqual(commute.map(\.category), [.food, .transport])
+    }
+
+    /// 時間詞開頭不是品項，維持單筆，而且日期照樣要解析出來。
+    func testTimeWordPrefixStaysSingleEntry() {
+        let today = parseMultiple("今天午餐200")
+        XCTAssertEqual(today.count, 1)
+        XCTAssertEqual(today.first?.amount, 200)
+
+        let yesterday = parseMultiple("昨天晚餐300")
+        XCTAssertEqual(yesterday.count, 1)
+        XCTAssertEqual(yesterday.first?.amount, 300)
+        XCTAssertEqual(calendar.dateComponents([.day], from: yesterday[0].date, to: now).day, 1)
+    }
+
+    /// 時間詞出現在句中時是下一筆的開頭。
+    func testTimeWordInsideSentenceStartsNewEntry() {
+        let result = parseMultiple("今天午餐200昨天晚餐300")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result.map(\.amount), [200, 300])
+        XCTAssertEqual(calendar.dateComponents([.day], from: result[1].date, to: now).day, 1)
+    }
+
+    /// 「8月8號」的月/號是日期單位，不是新品項的開頭。
+    func testExplicitDateIsNotSplit() {
+        let result = parseMultiple("8月8號午餐300")
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.amount, 300)
+    }
+
+    /// 後面沒有第二筆金額就不切——寧可少切，不可切錯。
+    func testDoesNotSplitWhenNoSecondAmount() {
+        let result = parseMultiple("午餐300很好吃")
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.amount, 300)
+    }
+
+    /// 「金額在前」的句子需要語意理解，維持既有的單筆行為（「的」不當句界）。
+    func testAmountFirstSentenceStaysSingleEntry() {
+        let result = parseMultiple("一百二十塊的午餐和三十塊的捷運")
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.amount, 120)
+    }
+
+    /// 語音辨識的雜訊：切不乾淨可以接受，但不可以 crash，也不可以算錯金額。
+    func testNoisyTranscriptDoesNotProduceWrongAmounts() {
+        let result = parseMultiple("午餐200晚餐宵夜200今天午餐200")
+        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(result.map(\.amount), [200, 200, 200])
+    }
+
+    /// 「還有」是語助詞，切在它前面，第二筆的備註不該留下它。
+    func testSplitsBeforeFillerWord() {
+        let result = parseMultiple("午餐300還有晚餐500")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result.map(\.amount), [300, 500])
+        XCTAssertEqual(result[1].note, "晚餐")
+    }
+
+    /// 「點」是量詞（三點），但「點心」是品項——不可以被量詞規則擋住。
+    func testCounterExceptionForDimSum() {
+        let result = parseMultiple("午餐300點心200")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result.map(\.amount), [300, 200])
+    }
+
+    /// 全形數字（正規化前）也要切得開。
+    func testSplitsFullWidthDigits() {
+        let result = parseMultiple("午餐３００晚餐５００")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result.map(\.amount), [300, 500])
+    }
 }
