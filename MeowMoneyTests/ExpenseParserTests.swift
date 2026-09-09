@@ -547,4 +547,78 @@ final class ExpenseParserTests: XCTestCase {
         XCTAssertEqual(result.count, 2)
         XCTAssertEqual(result.map(\.amount), [300, 500])
     }
+
+    // MARK: - 「塊」：幣別 vs 量詞
+    //
+    // 「塊」同時是幣別（午餐30塊）與量詞（一塊蛋糕）。判準是**它前面有沒有品項**。
+    // 這兩組測試同等重要：只驗筆數看不出金額配到哪個品項，所以一律斷言「品項＝金額」。
+
+    /// 量詞用法：「一塊蛋糕30元」是 30 元的蛋糕，不是一筆 1 元加一筆 30 元。
+    func testLeadingKuaiIsCounterNotCurrency() {
+        XCTAssertEqual(pairs(parseMultiple("一塊蛋糕30元")), ["蛋糕=30"])
+        XCTAssertEqual(pairs(parseMultiple("兩塊蛋糕60元")), ["蛋糕=60"])
+        XCTAssertEqual(pairs(parseMultiple("三塊雞排120")), ["雞排=120"])
+        XCTAssertEqual(pairs(parseMultiple("3塊雞排120")), ["雞排=120"])
+    }
+
+    /// 量詞用法而且沒講金額：數量不可以被當成金額，要留 nil 讓 UI 請使用者補。
+    func testCounterKuaiWithoutAmountLeavesAmountNil() {
+        let result = parseMultiple("一塊蛋糕")
+        XCTAssertEqual(result.count, 1)
+        XCTAssertNil(result.first?.amount, "「一塊蛋糕」的一是量詞，不是 1 元")
+        XCTAssertEqual(result.first?.note, "蛋糕")
+    }
+
+    /// 「半」不是數字，這句沒有量詞問題——備註要完整保留，不可以被削掉「塊」。
+    func testHalfKuaiKeepsNoteIntact() {
+        let result = parseMultiple("半塊蛋糕20元")
+        XCTAssertEqual(pairs(result), ["半塊蛋糕=20"])
+    }
+
+    /// 時間詞不算品項，「昨天」開頭的句子仍算「一塊」在片段開頭。
+    func testCounterKuaiAfterRelativeDayWord() {
+        XCTAssertEqual(pairs(parseMultiple("昨天一塊蛋糕30元")), ["蛋糕=30"])
+    }
+
+    /// 量詞判斷不可以蔓延到後面的筆數。
+    func testCounterKuaiFollowedByAnotherEntry() {
+        XCTAssertEqual(pairs(parseMultiple("一塊蛋糕30元晚餐500")), ["蛋糕=30", "晚餐=500"])
+    }
+
+    // 以下是「塊」當幣別的既有行為，修量詞不可以改壞任何一條。
+
+    /// 「塊」前面有品項 → 幣別。
+    func testKuaiAfterItemIsCurrency() {
+        XCTAssertEqual(pairs(parseMultiple("午餐30塊晚餐50塊")), ["午餐=30", "晚餐=50"])
+        XCTAssertEqual(pairs(parseMultiple("早餐50塊午餐120塊")), ["早餐=50", "午餐=120"])
+        XCTAssertEqual(pairs(parseMultiple("午餐30塊")), ["午餐=30"])
+        XCTAssertEqual(pairs(parseMultiple("午餐三十塊")), ["午餐=30"])
+        XCTAssertEqual(pairs(parseMultiple("蛋糕30塊錢")), ["蛋糕=30"])
+    }
+
+    /// 「塊」在開頭但後面接「的」→ 金額在前語序，仍是幣別。
+    func testKuaiBeforeStopwordIsCurrency() {
+        XCTAssertEqual(pairs(parseMultiple("三十塊的捷運")), ["捷運=30"])
+        XCTAssertEqual(pairs(parseMultiple("一百二十塊的午餐和三十塊的捷運")), ["午餐=120", "捷運=30"])
+    }
+
+    /// 「塊」後面沒有品項（句尾、或接「錢」）→ 幣別。
+    func testKuaiWithoutFollowingItemIsCurrency() {
+        XCTAssertEqual(parseMultiple("一塊").first?.amount, 1)
+        XCTAssertEqual(parseMultiple("一塊錢").first?.amount, 1)
+        XCTAssertEqual(parseMultiple("找我五塊").first?.amount, 5)
+    }
+
+    /// 其他量詞的備註本來就完整保留，量詞修法不可以動到它們。
+    func testOtherCounterWordsKeepNoteIntact() {
+        XCTAssertEqual(pairs(parseMultiple("一杯咖啡80元")), ["一杯咖啡=80"])
+        XCTAssertEqual(pairs(parseMultiple("兩碗麵150")), ["兩碗麵=150"])
+        XCTAssertEqual(pairs(parseMultiple("三包衛生紙99元")), ["三包衛生紙=99"])
+        XCTAssertEqual(pairs(parseMultiple("一份雞排70")), ["一份雞排=70"])
+    }
+
+    /// 上一輪修好的孤立幣別符號清理，不可以回退。
+    func testDollarResidueStillStripped() {
+        XCTAssertEqual(pairs(parseMultiple("$120的晚餐$")), ["晚餐=120"])
+    }
 }

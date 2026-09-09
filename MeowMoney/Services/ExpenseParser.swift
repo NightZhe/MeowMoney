@@ -31,6 +31,7 @@ enum ExpenseParser {
         var working = normalized
         let dateResult = extractDate(from: working, now: now, calendar: calendar)
         working = dateResult.remaining
+        working = stripLeadingQuantity(working)
 
         let isIncome = detectIncome(in: normalized)
 
@@ -176,6 +177,12 @@ enum ExpenseParser {
             let runEnd = numericRunEnd(in: probe, from: index)
             guard let value = numericValue(in: probe, from: index, to: runEnd), value > 0 else {
                 index = max(runEnd, index + 1)
+                continue
+            }
+            // 片段開頭的「一塊蛋糕」是在數東西，不是一筆帳——不建 span，
+            // 否則會在「一塊」與「蛋糕」之間切一刀，憑空多出一筆 1 元。
+            if isQuantityCounterBlock(in: probe, value: value, numberStart: index, unitIndex: runEnd) {
+                index = runEnd + 1
                 continue
             }
             let end = amountEnd(in: probe, runEnd: runEnd)
@@ -446,6 +453,83 @@ enum ExpenseParser {
         "個", "顆", "杯", "碗", "隻", "張", "份", "位", "瓶", "包", "件",
         "次", "趟", "天", "點", "人", "台", "支", "本", "盒", "條", "片", "碟"
     ]
+
+    /// 口語裡「數東西」的數字上限。超過這個值就當幣別——「30塊車資」是 30 元的車資，
+    /// 不是 30 塊車資。這條是量詞判斷的安全閥：判錯量詞只是備註多幾個字，
+    /// 判錯幣別會讓整筆金額變成 nil。
+    private static let maxCounterQuantity: Decimal = 10
+
+    /// `塊` 同時是幣別（`午餐30塊`）與量詞（`一塊蛋糕`）。它不能直接放進 `counterWords`，
+    /// 那會讓「午餐30塊」的 30 也失效——那是比誤判量詞嚴重得多的損失。
+    ///
+    /// 判別依據不是「`塊` 後面接什麼」，而是**「`塊` 前面有沒有品項」**：
+    /// - `一塊蛋糕30元`：數字在片段開頭，前面沒有品項，`塊` 後面直接接品項文字 → 量詞
+    /// - `午餐30塊晚餐50塊`：`30` 前面有「午餐」 → 幣別
+    /// - `三十塊的捷運`：雖在開頭，但後面接「的」，屬於「金額在前」語序 → 幣別
+    /// - `一塊`／`一塊錢`：`塊` 後面沒有品項文字 → 幣別
+    /// - `30塊車資`：形態符合，但沒有人「數 30 塊車資」，數字太大 → 幣別（見 `maxCounterQuantity`）
+    ///
+    /// 刻意只認「片段開頭」這一種形態，其餘一律當幣別（寧可漏判量詞，不可漏判金額）。
+    ///
+    /// - Parameters:
+    ///   - value: 數字片段的值，用來擋掉「數字大到不可能是數量」的情況。
+    ///   - numberStart: 數字片段的起點。
+    ///   - unitIndex: 數字片段結束後緊接的位置，也就是候選的單位字位置。
+    private static func isQuantityCounterBlock(
+        in chars: [Character],
+        value: Decimal,
+        numberStart: Int,
+        unitIndex: Int
+    ) -> Bool {
+        guard unitIndex < chars.count, chars[unitIndex] == "塊" else { return false }
+        guard value <= maxCounterQuantity else { return false }
+        guard isItemFreePrefix(String(chars[0..<numberStart])) else { return false }
+
+        let itemStart = unitIndex + 1
+        guard itemStart < chars.count else { return false }   // 句尾，沒有品項可數
+        let next = chars[itemStart]
+        if next.isWhitespace { return false }
+        if ChineseNumberParser.isNumericCharacter(next) { return false }
+        if boundaryStopwords.contains(next) { return false }  // 「三十塊的捷運」
+        if currencyUnitTrailers.contains(next) { return false } // 「一塊錢」「一塊整」
+        if connectorWords.contains(where: { matches($0, in: chars, at: itemStart, limit: chars.count) }) {
+            return false
+        }
+        return true
+    }
+
+    /// 出現在數字前面、但不是品項的字：拿東西的動作。
+    /// 刻意**不收**「花了」「付了」「刷了」這類花錢的動詞——「花了五塊買糖果」的
+    /// 五塊是金額不是數量，收進來會讓那筆的金額變成 nil。
+    private static let quantityPrefixWords = ["買了", "買", "吃了", "吃", "喝了", "喝", "點了", "叫了"]
+
+    /// 數字前面這段有沒有東西能當品項。時間詞（昨天、今天…）與拿東西的動作
+    /// （買了、吃了…）都不算品項，所以「昨天買了一塊蛋糕30元」的「一塊」仍算在片段開頭。
+    private static func isItemFreePrefix(_ prefix: String) -> Bool {
+        guard !prefix.allSatisfy(\.isWhitespace) else { return true }
+        var text = prefix
+        let words = relativeDayWords.map(\.word) + quantityPrefixWords
+        for word in words.sorted(by: { $0.count > $1.count }) {
+            text = text.replacingOccurrences(of: word, with: "")
+        }
+        return text.allSatisfy(\.isWhitespace)
+    }
+
+    /// 片段開頭的「數字＋塊」是量詞時，把它從文字裡拿掉：它既不是金額，
+    /// 留著也只會讓備註變成「一塊蛋糕」而不是「蛋糕」。
+    /// 不是量詞用法就原樣回傳（`三十塊的捷運`、`午餐30塊` 都走這條）。
+    private static func stripLeadingQuantity(_ text: String) -> String {
+        let chars = Array(text)
+        var start = 0
+        while start < chars.count, chars[start].isWhitespace { start += 1 }
+        guard start < chars.count, ChineseNumberParser.isNumericCharacter(chars[start]) else { return text }
+
+        let runEnd = numericRunEnd(in: chars, from: start)
+        guard let value = numericValue(in: chars, from: start, to: runEnd),
+              isQuantityCounterBlock(in: chars, value: value, numberStart: start, unitIndex: runEnd)
+        else { return text }
+        return String(chars[(runEnd + 1)...])
+    }
 
     struct AmountCandidate {
         var value: Decimal
