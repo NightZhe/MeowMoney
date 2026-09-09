@@ -179,14 +179,22 @@ struct StatsView: View {
         .padding(.top, 6)
     }
 
-    /// 觸控目標 44×44pt（既存缺陷從 38×38 放大，見 Glass 規格 §4.2）；
-    /// 圖示本身仍是 15pt，不畫任何底色——底色由外層 `mmPill()` 容器負責。
+    /// 觸控目標 44×44pt；圖示本身仍是 15pt，不畫任何底色——底色由外層 `mmPill()` 容器負責。
+    ///
+    /// `.contentShape(Rectangle())` 是必要的，不是保險：`.frame` 只放大版面範圍，
+    /// **不會**讓那圈空白變成可點區域。這顆按鈕的 label 是沒有背景的 `Image`，
+    /// 命中測試只認畫得出東西的地方——實機上使用者點得到的其實只有中間那顆 15pt 箭頭，
+    /// 回報是「點不動，像壞掉」（2026-09-10 使用者實機回報）。
+    /// 同檔其他 44pt 按鈕（`RecordsView` 加號、`EntrySheet` 送出）有 `.background(Circle())`
+    /// 填滿整個 frame，所以不受影響；只有這顆是透明的。
+    /// 專案的標準寫法見 `SharedComponents.swift:33`。
     private func iconButton(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(MM.textPrimary)
                 .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .squishy()
     }
