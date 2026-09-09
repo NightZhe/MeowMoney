@@ -6,7 +6,7 @@ struct HomeView: View {
     @State private var showVoiceSheet = false
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var scheme
     @Environment(TabRouter.self) private var router
 
     private var calendar: Calendar { .current }
@@ -156,26 +156,21 @@ struct HomeView: View {
                 showVoiceSheet = true
             } label: {
                 ZStack {
-                    // 兩圈 1px 細環，不是暈開的實心色塊（README §6.6 規則 4）
+                    // 兩圈**實心**光暈在呼吸，不是 1px 細環。2.0 一度改成細環（依據當時
+                    // README §6.6 規則 4「不要暈開的實心色塊」），但那條規則沒有任何驗證
+                    // 支撐；使用者實機比對 1.0 與 2.0 後判定 1.0 的漸層呼吸更有質感，
+                    // 2026-09-09 改回。尺寸也回到 1.0 的 168／136——比 2.0 的 196／168 更貼近
+                    // 核心，讀起來才像「從按鈕散出來的光」而不是兩圈漣漪。
+                    // 深色的兩層都調亮一階，補上深色不能用投影所少掉的發光感。
                     Circle()
-                        .strokeBorder(MM.brandFill.opacity(0.16), lineWidth: 1)
-                        .frame(width: 196, height: 196)
+                        .fill(MM.brandFill.opacity(scheme == .dark ? 0.22 : 0.16))
+                        .frame(width: 168, height: 168)
                         .scaleEffect(pulse ? 1.08 : 0.94)
 
-                    // 中間那圈是全 app 唯一的自訂玻璃（README §0；Glass實作規格.md §5）。
-                    Group {
-                        if reduceTransparency {
-                            // Reduce Transparency 開啟：純 hairline，不追求材質感。
-                            Circle().strokeBorder(MM.hairline, lineWidth: 1)
-                        } else {
-                            // material 圓環，不是純色線稿——否則完全沒有層次感。
-                            Circle()
-                                .fill(.ultraThinMaterial)
-                                .overlay(Circle().strokeBorder(MM.brandFill.opacity(0.30), lineWidth: 1))
-                        }
-                    }
-                    .frame(width: 168, height: 168)
-                    .scaleEffect(pulse ? 1.04 : 0.96)
+                    Circle()
+                        .fill(MM.brandFill.opacity(scheme == .dark ? 0.30 : 0.22))
+                        .frame(width: 136, height: 136)
+                        .scaleEffect(pulse ? 1.04 : 0.96)
 
                     Circle()
                         .fill(
@@ -186,6 +181,13 @@ struct HomeView: View {
                             )
                         )
                         .frame(width: 112, height: 112)
+                        // 核心的同色發光是 1.0 質感的主要來源。深色下不掛投影——
+                        // 暖色投影在深底上會糊成髒污（README §6.5 Spotify 研究），
+                        // 該模式的發光由上面兩層較高的不透明度負責。
+                        .shadow(
+                            color: scheme == .dark ? .clear : MM.brandFill.opacity(0.5),
+                            radius: 16, x: 0, y: 8
+                        )
                     Image(systemName: "mic.fill")
                         .font(.system(size: 42, weight: .semibold))
                         // 深色圖示，不是白色：白色對淺蜜桃只有 1.99:1。
