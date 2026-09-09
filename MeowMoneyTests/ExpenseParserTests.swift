@@ -208,6 +208,56 @@ final class ExpenseParserTests: XCTestCase {
         XCTAssertFalse(result.note.lowercased().contains("nt"))
     }
 
+    // MARK: - 孤立幣別符號殘留（2026-09-09 實機案例）
+    //
+    // 實機原話「$120的晚餐$」：語音辨識把講出來的幣別單位吐成了 $，
+    // 而且句尾多吐了一個沒有貼著任何數字的孤立 $，`amountEnd` 只會吃掉貼著金額的那個。
+
+    func testRealDevice_isolatedDollarSignAtSentenceEnd() {
+        let result = parse("$120的晚餐$")
+        XCTAssertEqual(result.amount, 120)
+        XCTAssertEqual(result.note, "晚餐")
+    }
+
+    func testIsolatedDollarSignAtStart() {
+        let result = parse("$買咖啡100")
+        XCTAssertEqual(result.amount, 100)
+        XCTAssertEqual(result.note, "買咖啡")
+    }
+
+    func testIsolatedDollarSignInMiddle() {
+        let result = parse("午餐$晚餐300")
+        XCTAssertEqual(result.amount, 300)
+        XCTAssertEqual(result.note, "午餐晚餐")
+    }
+
+    /// 備註被孤立符號清空之後，行為要跟「原本就解析不出品項」一致，不能留白備註。
+    func testNoteBecomesEmptyAfterCurrencyCleanupFallsBackToCategoryTitle() {
+        let result = parse("$300$")
+        XCTAssertEqual(result.amount, 300)
+        XCTAssertEqual(result.note, ExpenseCategory.other.title)
+    }
+
+    /// 貼著數字的 $ 可能是品項名稱本身的一部分（不是這筆選中的金額），不可以清掉。
+    func testDollarSignAttachedToDigitInItemNameIsPreserved() {
+        let result = parse("帽子$1商店買了300元")
+        XCTAssertEqual(result.amount, 300)
+        XCTAssertTrue(result.note.contains("$1"), "貼著數字的 $ 是品項名稱的一部分，不該被清掉")
+    }
+
+    /// 「元」「塊」出現在品項名稱中間（不是跟在數字後面當幣別單位）時，不可以被削掉。
+    func testItemNameContainingYuanCharacterIsPreserved() {
+        let result = parse("元氣早餐100")
+        XCTAssertEqual(result.amount, 100)
+        XCTAssertEqual(result.note, "元氣早餐")
+    }
+
+    func testItemNameContainingKuaiCharacterIsPreserved() {
+        let result = parse("大塊牛排500")
+        XCTAssertEqual(result.amount, 500)
+        XCTAssertEqual(result.note, "大塊牛排")
+    }
+
     // MARK: - 一句話多筆（07）
 
     private func parseMultiple(_ text: String) -> [ParsedEntry] {

@@ -615,12 +615,76 @@ enum ExpenseParser {
         "總共花了", "一共花了", "總共", "一共", "花了", "花費", "支出", "收入",
         "付了", "刷了", "大概", "差不多", "左右", "而已", "然後", "還有",
         // 不放單獨的「錢」：它會把「撿到錢」吃成「撿到」。
-        // 數字後面的「元/塊/錢」已由 extractAmount 的幣別後綴處理掉了。
-        "塊錢", "元整", "元", "塊", "圓", "花", "共", "了", "的", "喔", "啦", "吧", "嗎", "呢"
+        // 不放「元/塊/圓」：盲目整段替換會把「元氣早餐」「大塊牛排」這類品項名稱削壞
+        // （2026-09-09 實機案例）。交給 `stripCurrencyResidue` 只在確定是幣別殘留時才清。
+        "花", "共", "了", "的", "喔", "啦", "吧", "嗎", "呢"
     ]
 
+    /// 幣別「單位字」。混在句子裡當殘留時，判斷依據不是它前面有沒有數字——
+    /// `extractAmount` 把選中金額連同緊貼的單位字一起吃掉之後，數字本身也從
+    /// 文字裡消失了，往前找數字找不到東西。真正管用的訊號是：它有沒有以
+    /// **獨立詞彙**的樣子單獨站著（左右都是空白或字串邊界）。
+    private static let currencyUnitWords: Set<Character> = ["元", "塊", "圓"]
+    /// 接在幣別單位字後面的收尾字，例如「元整」「塊錢」，跟著單位字一起判斷、一起清掉。
+    private static let currencyUnitTrailers: Set<Character> = ["整", "錢"]
+
+    /// 語音辨識偶爾會把講出來的貨幣單位吐成孤立的 `$`／`＄`，或吐成沒有緊跟在金額後面的
+    /// 「元」「塊」，而且位置不固定——可能在句尾、句中，甚至頭尾各一個
+    /// （實機案例：`$120的晚餐$`，句尾的 `$` 沒人清；`165 元` 中間隔了空白，「元」沒被
+    /// `extractAmount` 的幣別後綴一起吃掉，選中的金額 165 又已經從文字裡整段移除，
+    /// 往前也找不到數字可以比對）。
+    ///
+    /// 兩類分開判斷，因為文法角色與可用訊號不同：
+    /// - `$`／`＄`：只清「兩側都不貼著數字」的——貼著數字的 `$` 可能是品項名稱本身
+    ///   的一部分（例如「$1 商店」），保留不動。
+    /// - `元`／`塊`／`圓`（含收尾字「整」「錢」）：只清「以獨立詞彙站著」的，也就是
+    ///   左右都接空白或字串邊界——這才是單獨殘留的幣別單位；緊貼著別的字（「元氣」
+    ///   「大塊」）代表它是詞彙本身的一部分，保留不動。
+    /// 判斷不了就不清，寧可留一個 `$`，也不要把「元氣早餐」削成「氣早餐」。
+    ///
+    /// `NT`／`NT$` 不在這裡處理：跟金額結合的已由 `extractAmount` 整串吃掉，
+    /// 沒結合的很可能是品項名稱的一部分（例如「大戶NT專案」），沒有安全的判斷方式，故不清。
+    private static func stripCurrencyResidue(_ text: String) -> String {
+        let chars = Array(text)
+        var result: [Character] = []
+        result.reserveCapacity(chars.count)
+        var i = 0
+        while i < chars.count {
+            let char = chars[i]
+
+            if char == "$" || char == "＄" {
+                let prevIsDigit = i > 0 && ChineseNumberParser.isNumericCharacter(chars[i - 1])
+                let nextIsDigit = i + 1 < chars.count && ChineseNumberParser.isNumericCharacter(chars[i + 1])
+                if prevIsDigit || nextIsDigit {
+                    result.append(char) // 貼著數字，可能是品項名稱本身，不清
+                }
+                // 否則：兩側都不是數字，判定為孤立殘留，不寫入結果 = 清掉。
+                i += 1
+                continue
+            }
+
+            if currencyUnitWords.contains(char) {
+                let leftIsBoundary = i == 0 || chars[i - 1].isWhitespace
+                var afterIndex = i + 1
+                if afterIndex < chars.count, currencyUnitTrailers.contains(chars[afterIndex]) {
+                    afterIndex += 1
+                }
+                let rightIsBoundary = afterIndex == chars.count || chars[afterIndex].isWhitespace
+                if leftIsBoundary && rightIsBoundary {
+                    i = afterIndex
+                    continue // 左右都是邊界，判定為獨立殘留的幣別單位，不寫入結果 = 清掉
+                }
+                // 否則：緊貼著別的字，判定為詞彙本身的一部分，保留不動。
+            }
+
+            result.append(char)
+            i += 1
+        }
+        return String(result)
+    }
+
     static func makeNote(from text: String, fallback: ExpenseCategory, isIncome: Bool) -> String {
-        var working = text
+        var working = stripCurrencyResidue(text)
         for word in fillerWords.sorted(by: { $0.count > $1.count }) {
             working = working.replacingOccurrences(of: word, with: " ")
         }
