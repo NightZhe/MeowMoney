@@ -621,4 +621,37 @@ final class ExpenseParserTests: XCTestCase {
     func testDollarResidueStillStripped() {
         XCTAssertEqual(pairs(parseMultiple("$120的晚餐$")), ["晚餐=120"])
     }
+
+    // MARK: - 「金額在前」語序＋幣別符號在數字前（實機真實輸入）
+
+    /// 實機真實案例：語音辨識把「塊」吐成 `$` 並放在數字前面。
+    /// 「和」是連接詞、後面緊接的 `$` 是下一筆的幣別符號，兩者都不該殘留在第一筆備註裡。
+    func testDollarPrefixAmountFirstStripsConnectorAndResidue() {
+        let result = parseMultiple("$120的午餐和$30的捷運")
+        XCTAssertEqual(pairs(result), ["午餐=120", "捷運=30"])
+        XCTAssertEqual(result.map(\.category), [.food, .transport])
+    }
+
+    /// 同一種形態下，其他連接詞也不該殘留（不管單字或多字連接詞）。
+    func testDollarPrefixAmountFirstConnectorVariants() {
+        for connector in ["和", "跟", "還有", "加上", "然後", "以及", "再加"] {
+            let result = parseMultiple("$120的午餐\(connector)$30的捷運")
+            XCTAssertEqual(pairs(result), ["午餐=120", "捷運=30"], "連接詞「\(connector)」在 $ 前綴形態下切錯了")
+        }
+    }
+
+    /// 連接詞落在後段片段的開頭、後面又緊接 $ 時，單字連接詞（和／跟）也要清得掉——
+    /// 之前只在「後面直接接數字」時才判定是連接詞，$ 夾在中間會擋住這個判斷。
+    func testDollarPrefixConnectorAtHeadOfNextPiece() {
+        for connector in ["和", "跟"] {
+            let result = parseMultiple("午餐300\(connector)$30的捷運")
+            XCTAssertEqual(pairs(result), ["午餐=300", "捷運=30"], "連接詞「\(connector)」在片段開頭＋$ 形態下切錯了")
+        }
+    }
+
+    /// 「和牛」不可以被誤判成連接詞——即使後面接的是 $ 開頭的金額，也要維持既有行為。
+    func testDollarPrefixDoesNotMakeConnectorEatItemName() {
+        let result = parseMultiple("午餐300和牛$500")
+        XCTAssertEqual(pairs(result), ["午餐=300", "和牛=500"])
+    }
 }

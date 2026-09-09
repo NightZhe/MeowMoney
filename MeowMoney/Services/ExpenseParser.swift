@@ -186,12 +186,26 @@ enum ExpenseParser {
                 continue
             }
             let end = amountEnd(in: probe, runEnd: runEnd)
+            let start = amountStart(in: probe, numberStart: index)
             spans.append(
-                AmountSpan(start: index, end: end, isAmountFirst: isAmountFirst(in: probe, at: end))
+                AmountSpan(start: start, end: end, isAmountFirst: isAmountFirst(in: probe, at: end))
             )
             index = max(runEnd, index + 1)
         }
         return spans
+    }
+
+    /// 金額片段的起點：把緊貼在數字前面的幣別符號（`$`／`＄`）一併算進去，
+    /// 跟 `extractAmount` 的規則一致——否則像「金額在前」語序的第二筆
+    /// `$30的捷運`，切點會落在數字開頭而不是 `$` 前面，把 `$` 誤留在前一段的尾巴
+    /// （實機案例：`$120的午餐和$30的捷運` 會切成「$120的午餐和$」＋「30的捷運」，
+    /// 連接詞「和」跟著殘留的 `$` 一起卡在前一段結尾，`trimConnectors` 的 suffix
+    /// 比對抓不到，因為片段真正的結尾字元是 `$` 不是「和」）。
+    private static func amountStart(in probe: [Character], numberStart: Int) -> Int {
+        guard numberStart > 0, probe[numberStart - 1] == "$" || probe[numberStart - 1] == "＄" else {
+            return numberStart
+        }
+        return numberStart - 1
     }
 
     /// 「金額在前」的訊號：金額（含幣別後綴）之後接「的／之」，而且後面還有字當品項。
@@ -275,7 +289,7 @@ enum ExpenseParser {
         if head {
             for word in connectorWords where text.hasPrefix(word) {
                 if word.count == 1,
-                   let next = text.dropFirst().first,
+                   let next = firstSignificantCharacter(after: text.dropFirst()),
                    !ChineseNumberParser.isNumericCharacter(next) {
                     break
                 }
@@ -290,6 +304,14 @@ enum ExpenseParser {
             }
         }
         return text
+    }
+
+    /// 跳過幣別符號（`$`／`＄`）找出後面第一個「有意義」的字元，用來判斷單字連接詞
+    /// 後面是不是數字。幣別符號可能夾在連接詞跟數字之間（例如「和$30」——`amountStart`
+    /// 會把 `$` 併進金額片段，但切點只切在數字前一個位置，連接詞後緊接的仍是 `$`），
+    /// 不能讓它擋住「後面是數字」的判斷，否則「和$30的捷運」的「和」不會被當成連接詞拿掉。
+    private static func firstSignificantCharacter(after text: Substring) -> Character? {
+        text.first { $0 != "$" && $0 != "＄" }
     }
 
     /// 數字片段的結束位置（exclusive）。夾在阿拉伯數字之間的半形逗號算數字的一部分。
