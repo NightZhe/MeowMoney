@@ -376,11 +376,97 @@ final class ExpenseParserTests: XCTestCase {
         XCTAssertEqual(result.first?.amount, 300)
     }
 
-    /// 「金額在前」的句子需要語意理解，維持既有的單筆行為（「的」不當句界）。
-    func testAmountFirstSentenceStaysSingleEntry() {
+    // MARK: - 金額在前的語序
+    //
+    // 「一百二十塊的午餐和三十塊的捷運」這種句子，切點在**下一筆金額的開頭**，
+    // 不是在金額之後——切錯位置會讓「午餐」跑到下一段，金額配到錯的品項上。
+    // 因此以下每個測試都斷言「品項＋金額」的配對，只斷言筆數是驗不到這個 bug 的。
+
+    /// 把 [(備註, 金額)] 攤平成好比對的形狀。
+    private func pairs(_ entries: [ParsedEntry]) -> [String] {
+        entries.map { "\($0.note)=\($0.amount.map { "\($0)" } ?? "nil")" }
+    }
+
+    func testAmountFirstTwoEntriesPairCorrectly() {
         let result = parseMultiple("一百二十塊的午餐和三十塊的捷運")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(pairs(result), ["午餐=120", "捷運=30"])
+        XCTAssertEqual(result.map(\.category), [.food, .transport])
+    }
+
+    /// 常見連接詞都要能切，而且配對不變。
+    func testAmountFirstConnectorVariants() {
+        for connector in ["和", "跟", "還有", "加上", "然後", "以及", "再加"] {
+            let result = parseMultiple("一百二十塊的午餐\(connector)三十塊的捷運")
+            XCTAssertEqual(pairs(result), ["午餐=120", "捷運=30"], "連接詞「\(connector)」切錯了")
+        }
+    }
+
+    /// 語音辨識常常一個連接詞都沒有。
+    func testAmountFirstWithoutConnector() {
+        let result = parseMultiple("一百二十塊的午餐三十塊的捷運")
+        XCTAssertEqual(pairs(result), ["午餐=120", "捷運=30"])
+    }
+
+    func testAmountFirstWithArabicDigits() {
+        XCTAssertEqual(pairs(parseMultiple("120塊的午餐和30塊的捷運")), ["午餐=120", "捷運=30"])
+        XCTAssertEqual(pairs(parseMultiple("120元的午餐和30元的捷運")), ["午餐=120", "捷運=30"])
+    }
+
+    func testAmountFirstThreeEntries() {
+        let result = parseMultiple("一百塊的早餐和三十塊的捷運和兩百塊的午餐")
+        XCTAssertEqual(pairs(result), ["早餐=100", "捷運=30", "午餐=200"])
+        XCTAssertEqual(result.map(\.category), [.food, .transport, .food])
+    }
+
+    /// 單筆的「金額在前」是配對正確的前提：備註要是「捷運」，不是「的捷運」或空字串。
+    func testAmountFirstSingleEntryNote() {
+        let result = parseMultiple("三十塊的捷運")
         XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.amount, 120)
+        XCTAssertEqual(pairs(result), ["捷運=30"])
+        XCTAssertEqual(result.first?.category, .transport)
+    }
+
+    /// 日期詞在句首時只屬於第一筆，不影響切點。
+    func testAmountFirstKeepsDatePrefix() {
+        let result = parseMultiple("昨天一百二十塊的午餐和三十塊的捷運")
+        XCTAssertEqual(pairs(result), ["午餐=120", "捷運=30"])
+        XCTAssertEqual(calendar.dateComponents([.day], from: result[0].date, to: now).day, 1)
+    }
+
+    // MARK: - 混合語序
+
+    /// 前一筆品項在前、後一筆金額在前。
+    func testMixedOrderItemFirstThenAmountFirst() {
+        let result = parseMultiple("午餐300和三十塊的捷運")
+        XCTAssertEqual(pairs(result), ["午餐=300", "捷運=30"])
+        XCTAssertEqual(result.map(\.category), [.food, .transport])
+    }
+
+    /// 前一筆金額在前、後一筆品項在前：中間只有一個連接詞，界線才明確。
+    func testMixedOrderAmountFirstThenItemFirst() {
+        let result = parseMultiple("一百二十塊的午餐和晚餐500")
+        XCTAssertEqual(pairs(result), ["午餐=120", "晚餐=500"])
+    }
+
+    /// 界線不明就退回單筆——寧可不切，也不可把金額配給錯的品項。
+    func testMixedOrderWithAmbiguousBoundaryStaysSingleEntry() {
+        // 兩個連接詞，無從判斷「飲料」屬於哪一筆。
+        let twoConnectors = parseMultiple("一百二十塊的午餐和飲料和晚餐500")
+        XCTAssertEqual(twoConnectors.count, 1)
+        XCTAssertEqual(twoConnectors.first?.amount, 120)
+
+        // 完全沒有連接詞，「午餐飲料晚餐」切不出界線。
+        let noConnector = parseMultiple("一百二十塊的午餐飲料晚餐500")
+        XCTAssertEqual(noConnector.count, 1)
+        XCTAssertEqual(noConnector.first?.amount, 120)
+    }
+
+    /// 「和牛」的「和」是品項的一部分，不是連接詞，不可以被切點清掉。
+    func testConnectorTrimDoesNotEatItemName() {
+        let result = parseMultiple("午餐300和牛500")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(pairs(result), ["午餐=300", "和牛=500"])
     }
 
     /// 語音辨識的雜訊：切不乾淨可以接受，但不可以 crash，也不可以算錯金額。

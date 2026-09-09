@@ -56,8 +56,8 @@ enum ExpenseParser {
     ///
     /// 也切得開語音辨識輸出的「午餐300晚餐500」——中文語音辨識不會插入空白或標點，
     /// 所以除了停頓與標點，還會找「金額結束、後面又接非金額文字」的邊界（見
-    /// `splitByAmountBoundaries`）。**不**嘗試理解「一百二十塊的午餐和三十塊的捷運」
-    /// 這種金額在前、需要語意判斷的句子——切錯了會比不切更糟。
+    /// `splitByAmountBoundaries`）。兩種語序都支援：品項在前（`午餐300`）與
+    /// 金額在前（`三十塊的捷運`）；切點位置取決於語序，切錯位置會把品項配到別筆的金額上。
     /// 每一段都直接丟給既有的 `parse`，核心解析邏輯不重寫。
     ///
     /// - 單句輸入（切不出第二段）回傳單一元素，結果與直接呼叫 `parse` 相同。
@@ -119,25 +119,54 @@ enum ExpenseParser {
     /// 例：「點」是量詞（三點），但「點心」是品項。
     private static let continuationExceptions: Set<String> = ["點心", "包子"]
 
-    /// 不可能當品項開頭的虛字。擋住這些字是為了保留「一百二十塊的午餐和三十塊的捷運」
-    /// 這種「金額在前」的句子的既有行為——那需要語意理解，切了只會把品項配錯金額。
+    /// 不可能當品項開頭的虛字。「金額＋的」是「金額在前」語序的判斷訊號
+    /// （見 `AmountSpan.isAmountFirst`），所以在「品項在前」的切點上碰到它就不切。
     private static let boundaryStopwords: Set<Character> = ["的", "之"]
 
-    /// 在沒有任何分隔符的口語裡切出多筆。核心模式是 `[品項][金額][品項][金額]…`：
-    /// 一段數字（含幣別後綴）結束後，若接的是不屬於量詞/單位/虛字的文字，
-    /// **而且後面還存在另一個金額**，就在這裡切一刀。
+    /// 口語連接詞。它出現在切點上時不屬於任何一筆，要從片段的頭尾拿掉，
+    /// 否則備註會變成「和捷運」。依長度由長到短比對。
+    private static let connectorWords = ["還有", "加上", "以及", "然後", "再加", "和", "跟"]
+
+    /// 一段文字裡的一個數字片段，含位置與語序判斷。
+    private struct AmountSpan {
+        /// 數字起點。
+        var start: Int
+        /// exclusive，已含幣別後綴（「300元」的「元」算在內）。
+        var end: Int
+        /// 後面接「的」＋文字，例如「三十塊的捷運」：這筆的品項在金額**後面**。
+        var isAmountFirst: Bool
+    }
+
+    /// 在沒有任何分隔符的口語裡切出多筆。切點位置取決於語序：
+    /// - 品項在前（`午餐300晚餐500`）：切在金額（含幣別後綴）之後，也就是下一個品項的開頭。
+    /// - 金額在前（`一百二十塊的午餐和三十塊的捷運`）：切在**下一筆金額的開頭**，
+    ///   否則「午餐」會留在下一段，變成金額配錯品項。
     ///
-    /// 刻意保守——「寧可少切，不可切錯」：
+    /// 刻意保守——「寧可少切，不可切錯；寧可不切，也不可把金額配給錯的品項」：
     /// - 後面沒有第二個金額就不切（「午餐300很好吃」維持一筆，金額仍是 300）。
     /// - 數字後面接量詞就不切（「買了3個便當共300」是一筆）。
+    /// - 語序混合而且中間沒有唯一的連接詞可當切點時不切（見 `splitPoint`）。
     static func splitByAmountBoundaries(_ segment: String) -> [String] {
         let chars = Array(segment)
         guard chars.count > 1 else { return chars.isEmpty ? [] : [segment] }
         // 偵測用副本：只把全形阿拉伯數字換成半形，長度 1:1，索引才對得上原字串。
         let probe = chars.map(halfWidthDigit)
 
+        let cuts = splitPoints(in: probe)
+        guard !cuts.isEmpty else { return [segment] }
+
+        let bounds = [0] + cuts + [chars.count]
         var pieces: [String] = []
-        var pieceStart = 0
+        for i in 0..<(bounds.count - 1) {
+            let piece = String(chars[bounds[i]..<bounds[i + 1]])
+            pieces.append(trimConnectors(piece, head: i > 0, tail: i < bounds.count - 2))
+        }
+        return pieces.filter { !$0.isEmpty }
+    }
+
+    /// 掃出所有「值 > 0」的數字片段，順便判斷每一段的語序。
+    private static func amountSpans(in probe: [Character]) -> [AmountSpan] {
+        var spans: [AmountSpan] = []
         var index = 0
         while index < probe.count {
             guard ChineseNumberParser.isNumericCharacter(probe[index]) else {
@@ -149,17 +178,111 @@ enum ExpenseParser {
                 index = max(runEnd, index + 1)
                 continue
             }
-            let boundary = amountEnd(in: probe, runEnd: runEnd)
-            if boundary < probe.count, isBoundary(in: probe, at: boundary) {
-                pieces.append(String(chars[pieceStart..<boundary]))
-                pieceStart = boundary
-            }
+            let end = amountEnd(in: probe, runEnd: runEnd)
+            spans.append(
+                AmountSpan(start: index, end: end, isAmountFirst: isAmountFirst(in: probe, at: end))
+            )
             index = max(runEnd, index + 1)
         }
-        if pieceStart < chars.count {
-            pieces.append(String(chars[pieceStart...]))
+        return spans
+    }
+
+    /// 「金額在前」的訊號：金額（含幣別後綴）之後接「的／之」，而且後面還有字當品項。
+    private static func isAmountFirst(in probe: [Character], at end: Int) -> Bool {
+        guard end < probe.count, boundaryStopwords.contains(probe[end]) else { return false }
+        let itemStart = end + 1
+        guard itemStart < probe.count else { return false }
+        return !ChineseNumberParser.isNumericCharacter(probe[itemStart])
+    }
+
+    private static func splitPoints(in probe: [Character]) -> [Int] {
+        let spans = amountSpans(in: probe)
+        guard spans.count > 1 else { return [] }
+
+        var cuts: [Int] = []
+        for (a, b) in zip(spans, spans.dropFirst()) {
+            guard let cut = splitPoint(between: a, and: b, in: probe) else { continue }
+            guard cut > (cuts.last ?? 0), cut < probe.count else { continue }
+            cuts.append(cut)
         }
-        return pieces.filter { !$0.isEmpty }
+        return cuts
+    }
+
+    /// 決定相鄰兩筆金額之間的切點。回傳 nil = 判斷不了，維持同一段。
+    private static func splitPoint(between a: AmountSpan, and b: AmountSpan, in probe: [Character]) -> Int? {
+        guard a.isAmountFirst else {
+            // 品項在前：切在這筆金額之後，那裡就是下一個品項的開頭。
+            guard a.end < probe.count, isBoundary(in: probe, at: a.end) else { return nil }
+            return a.end
+        }
+        if b.isAmountFirst {
+            // 兩筆都是金額在前：切在下一筆金額的開頭，中間必須真的有品項文字。
+            guard hasItemText(in: probe, from: a.end, to: b.start) else { return nil }
+            return b.start
+        }
+        // 語序混合（前一筆金額在前、後一筆品項在前）：中間的文字同時是前一筆的品項
+        // 與後一筆的品項，只有出現唯一一個連接詞時才知道界線在哪，否則寧可不切。
+        guard let connector = soleConnectorRange(in: probe, from: a.end, to: b.start),
+              hasItemText(in: probe, from: a.end, to: connector.lowerBound) else { return nil }
+        // 切在連接詞之後，連接詞留在前一段的尾巴，由 `trimConnectors` 拿掉。
+        return connector.upperBound
+    }
+
+    /// 兩個位置之間扣掉虛字、空白與連接詞後還有沒有東西可以當品項。
+    private static func hasItemText(in probe: [Character], from start: Int, to end: Int) -> Bool {
+        guard start < end else { return false }
+        let text = trimConnectors(String(probe[start..<end]), head: true, tail: true)
+        return text.contains {
+            !boundaryStopwords.contains($0) && !$0.isWhitespace
+        }
+    }
+
+    /// 區間內唯一一個連接詞的範圍。沒有或超過一個都回傳 nil（超過一個 = 界線不明）。
+    private static func soleConnectorRange(in probe: [Character], from start: Int, to end: Int) -> Range<Int>? {
+        guard start < end else { return nil }
+        var found: Range<Int>?
+        var index = start
+        while index < end {
+            if let word = connectorWords.first(where: { matches($0, in: probe, at: index, limit: end) }) {
+                if found != nil { return nil }
+                found = index..<(index + word.count)
+                index += word.count
+            } else {
+                index += 1
+            }
+        }
+        return found
+    }
+
+    private static func matches(_ word: String, in probe: [Character], at index: Int, limit: Int) -> Bool {
+        let characters = Array(word)
+        guard index + characters.count <= limit else { return false }
+        return Array(probe[index..<(index + characters.count)]) == characters
+    }
+
+    /// 切點上的連接詞不屬於任何一筆，拿掉它。`head`／`tail` 只在該端真的是切點時為 true，
+    /// 所以沒被切過的整句不受影響。
+    /// 單字連接詞（和／跟）只在後面直接接數字時才拿掉——否則「和牛500」會被削成「牛500」。
+    private static func trimConnectors(_ piece: String, head: Bool, tail: Bool) -> String {
+        var text = piece
+        if head {
+            for word in connectorWords where text.hasPrefix(word) {
+                if word.count == 1,
+                   let next = text.dropFirst().first,
+                   !ChineseNumberParser.isNumericCharacter(next) {
+                    break
+                }
+                text = String(text.dropFirst(word.count))
+                break
+            }
+        }
+        if tail {
+            for word in connectorWords where text.hasSuffix(word) {
+                text = String(text.dropLast(word.count))
+                break
+            }
+        }
+        return text
     }
 
     /// 數字片段的結束位置（exclusive）。夾在阿拉伯數字之間的半形逗號算數字的一部分。
@@ -203,6 +326,7 @@ enum ExpenseParser {
         return end
     }
 
+    /// 「品項在前」語序的切點檢查：金額之後這個位置能不能當下一筆的開頭。
     private static func isBoundary(in chars: [Character], at index: Int) -> Bool {
         let next = chars[index]
         // 數字沒切乾淨（例如「300元500」）就保守不切。
@@ -213,24 +337,8 @@ enum ExpenseParser {
             let pair = index + 1 < chars.count ? String([next, chars[index + 1]]) : String(next)
             if !continuationExceptions.contains(pair) { return false }
         }
-        // 後面必須還有另一筆金額，否則寧可不切。
-        return containsAmount(in: chars, from: index)
-    }
-
-    private static func containsAmount(in chars: [Character], from start: Int) -> Bool {
-        var index = start
-        while index < chars.count {
-            guard ChineseNumberParser.isNumericCharacter(chars[index]) else {
-                index += 1
-                continue
-            }
-            let runEnd = numericRunEnd(in: chars, from: index)
-            if let value = numericValue(in: chars, from: index, to: runEnd), value > 0 {
-                return true
-            }
-            index = max(runEnd, index + 1)
-        }
-        return false
+        // 「後面必須還有另一筆金額」由呼叫端保證：切點只在相鄰兩筆金額之間才會被詢問。
+        return true
     }
 
     private static func isArabicDigit(_ c: Character) -> Bool {
