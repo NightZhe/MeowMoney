@@ -115,6 +115,19 @@ enum MM {
         return Font(scaled)
     }
 
+    /// 依 Dynamic Type 縮放任意數值（不只字型，例如高度、bleed 用的 padding）。
+    /// 用在 `RecordsView` 的 `List` sticky header：`.plain` 樣式會把 section header
+    /// 浮動釘在頂端（UITableView 既有行為），但它在捲動路徑上真正保留的空間來自
+    /// `.environment(\.defaultMinListHeaderHeight)`——這個值如果是寫死常數，字級衝到
+    /// AX5 時 header 的實際渲染高度會遠超過保留空間，導致捲到底下的那一列從 header
+    /// 「後面」穿出來，兩者文字疊在一起（2026-09-10 模擬器重現：AX5 捲動時「今天」
+    /// 跟第一列「餐飲 -400」重疊）。用 `UIFontMetrics(forTextStyle:).scaledValue(for:)`
+    /// 讓保留空間跟著同一條字級曲線走，不封頂（內容層規則，跟 `navFont` 的導覽層
+    /// 封頂邏輯不同）。
+    static func scaledValue(base: CGFloat, relativeTo style: Font.TextStyle = .subheadline) -> CGFloat {
+        UIFontMetrics(forTextStyle: style.uiTextStyle).scaledValue(for: base)
+    }
+
     /// 動畫（沿用 1.0 的手感值，非顏色 token，不受 Dark Mode 影響）
     static let bouncy = Animation.spring(response: 0.42, dampingFraction: 0.62)
     static let softPop = Animation.spring(response: 0.3, dampingFraction: 0.7)

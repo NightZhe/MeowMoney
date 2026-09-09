@@ -7,6 +7,7 @@ struct HomeView: View {
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(TabRouter.self) private var router
 
     private var calendar: Calendar { .current }
@@ -57,6 +58,17 @@ struct HomeView: View {
             .padding(.horizontal, 22)
             .padding(.top, 12)
             .padding(.bottom, 24)
+            // 附帶修正：`.safeAreaInset(edge: .bottom) { tabBar }` 掛在 RootTabView 的
+            // 每個子畫面上（見該檔註解），在「不需要捲動」的情況下運作正常——標準字級
+            // 下 4 筆最近的帳從來塞不滿一屏，這條路徑沒問題。但 AX5 下 4 筆就會讓內容
+            // 高度超出可視範圍、真的需要捲動，這時 ScrollView 的最大捲動距離會少算
+            // 大約一個 tab bar 的高度：捲到底後最後一到兩筆卡片本體被膠囊蓋住，
+            // 而且再也捲不出來（模擬器實測：AX5＋5 筆帳，捲到底部仍看得到「餐飲」
+            // 文字卡在膠囊材質後面，不是純視覺穿透，是內容真的被吃掉一截）。
+            // 這是 `.safeAreaInset` 在 ScrollView 真的進入捲動狀態時的既知限制，不是
+            // 這裡的排版錯——用內容層自己的 padding 補足，不依賴 safeAreaInset 在
+            // 捲動路徑上的行為。只在 AX 級距加，標準字級版面不變。
+            .padding(.bottom, dynamicTypeSize.isAccessibilitySize ? MM.scaledValue(base: 88) : 0)
         }
         .scrollIndicators(.hidden)
         .background(MM.bgBase.ignoresSafeArea())

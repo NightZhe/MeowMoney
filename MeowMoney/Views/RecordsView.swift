@@ -116,7 +116,10 @@ struct RecordsView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-                .environment(\.defaultMinListHeaderHeight, 34)
+                // 34 是標準字級下的視覺高度基準；用 MM.scaledValue 讓它跟著
+                // Dynamic Type 縮放，修掉 AX5 下 pinned header 蓋住第一列的重疊
+                // （見 MMTheme.swift 該函式註解）。
+                .environment(\.defaultMinListHeaderHeight, MM.scaledValue(base: 34))
             }
         }
         .background(MM.bgBase.ignoresSafeArea())
@@ -222,6 +225,20 @@ struct RecordsView: View {
             }
         }
         .padding(.vertical, 4)
+        // `.plain` list style 把 section header 釘在頂端浮動捲動（UITableView 既有行為），
+        // 這個 HStack 本身沒有底色的話，浮動時後面捲過的列會直接透出來蓋在文字上——
+        // 標準字級下列高與 header 高度相近，這層透出幾乎看不到；AX5 下列高暴增，
+        // 同一時間有更多列的內容停留在 header 底下，透出變成清楚可讀的文字重疊
+        // （2026-09-10 模擬器重現：捲動時「今天」跟第一列文字疊在一起）。補一層跟
+        // List 背景一致的不透明底色即可讓浮動 header 正確遮住底下內容。
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            // 系統在 pinned header 上下緣都多留了一點自己的間距（不算進這個 HStack
+            // 的 layout），這段沒有被我們的底色蓋到，AX5 下同樣會透出鄰近列的殘影
+            // （模擬器截圖確認：修好主要重疊後，上緣與下緣都各剩一條淡淡的殘影）。
+            // 底色上下都多蓋一點、跟著字級一起長，蓋住系統自己那段間距。
+            MM.bgBase.padding(.vertical, -MM.scaledValue(base: 12))
+        )
         .textCase(nil)
     }
 
