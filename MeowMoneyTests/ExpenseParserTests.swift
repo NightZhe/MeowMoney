@@ -654,4 +654,110 @@ final class ExpenseParserTests: XCTestCase {
         let result = parseMultiple("午餐300和牛$500")
         XCTAssertEqual(pairs(result), ["午餐=300", "和牛=500"])
     }
+
+    // MARK: - 2.0 送審驗收（2026-09-17）
+    //
+    // 以下每一句都是驗收時逐句重現過的錯誤，一律斷言「品項＝金額」配對。
+
+    /// 問題 A：單獨的「公」不是單位延續字，「公車」「公園」要能切開；完整單位詞「公斤」仍不切。
+    func testGongIsNotUnitContinuationUnlessFullUnitWord() {
+        XCTAssertEqual(pairs(parseMultiple("捷運二十五公車十五")), ["捷運=25", "公車=15"])
+        XCTAssertEqual(pairs(parseMultiple("早餐50公車15")), ["早餐=50", "公車=15"])
+        XCTAssertEqual(pairs(parseMultiple("午餐一百公園門票五十")), ["午餐=100", "公園門票=50"])
+        XCTAssertEqual(pairs(parseMultiple("買了一公斤蘋果200")), ["買一公斤蘋果=200"])
+        XCTAssertEqual(pairs(parseMultiple("騎了3公里油錢50")), ["騎3公里油錢=50"])
+    }
+
+    /// 問題 B：品項在前語序，切點後片段開頭的「和／跟」是連接詞。
+    func testLeadingSingleCharConnectorIsTrimmedAfterItemFirstSplit() {
+        XCTAssertEqual(pairs(parseMultiple("咖啡60和蛋糕90")), ["咖啡=60", "蛋糕=90"])
+        XCTAssertEqual(pairs(parseMultiple("早餐40跟午餐100")), ["早餐=40", "午餐=100"])
+    }
+
+    /// 問題 B 的例外：以「和／跟」開頭的品項名稱不可以被削掉。
+    func testConnectorLeadingItemWordsArePreserved() {
+        XCTAssertEqual(pairs(parseMultiple("午餐300和牛500")), ["午餐=300", "和牛=500"])
+        XCTAssertEqual(pairs(parseMultiple("咖啡60和菓子120")), ["咖啡=60", "和菓子=120"])
+        XCTAssertEqual(pairs(parseMultiple("晚餐200和風沙拉90")), ["晚餐=200", "和風沙拉=90"])
+        XCTAssertEqual(pairs(parseMultiple("咖啡60跟團費3000")), ["咖啡=60", "跟團費=3000"])
+    }
+
+    /// 問題 C：店名裡的數字不是金額，不參與金額與切點判斷。
+    func testStoreNameDigitsAreNotAmounts() {
+        XCTAssertEqual(pairs(parseMultiple("7-11咖啡45")), ["7-11咖啡=45"])
+        XCTAssertEqual(pairs(parseMultiple("711買咖啡45")), ["711買咖啡=45"])
+        XCTAssertEqual(pairs(parseMultiple("85度C咖啡60")), ["85度C咖啡=60"])
+        XCTAssertEqual(pairs(parseMultiple("7-ELEVEN咖啡45")), ["7-Eleven咖啡=45"])
+        XCTAssertEqual(pairs(parseMultiple("７－１１咖啡４５")), ["7-11咖啡=45"])
+        XCTAssertEqual(pairs(parseMultiple("50嵐珍奶55")), ["50嵐珍奶=55"])
+        XCTAssertEqual(pairs(parseMultiple("五十嵐紅茶三十五")), ["五十嵐紅茶=35"])
+        XCTAssertEqual(pairs(parseMultiple("去台北101看夜景門票600")), ["去台北101看夜景門票=600"])
+        XCTAssertEqual(pairs(parseMultiple("統一超商咖啡45")), ["統一超商咖啡=45"])
+        XCTAssertEqual(pairs(parseMultiple("全家買飲料35")), ["全家買飲料=35"])
+    }
+
+    /// 店名跟前一筆的阿拉伯數字金額黏在一起時，金額不可以吃進店名開頭的中文數字（55 不是 558）。
+    func testStoreNameRightAfterAmountStartsNewEntry() {
+        XCTAssertEqual(pairs(parseMultiple("50嵐珍奶55八方雲集鍋貼六十")), ["50嵐珍奶=55", "八方雲集鍋貼=60"])
+        XCTAssertEqual(pairs(parseMultiple("午餐300去711買咖啡45")), ["午餐=300", "去711買咖啡=45"])
+    }
+
+    /// 純數字的店名（711、101）本身可能是金額，沒有地點上下文時仍當金額。
+    func testPureDigitStoreNameNeedsContext() {
+        XCTAssertEqual(pairs(parseMultiple("午餐101晚餐200")), ["午餐=101", "晚餐=200"])
+        XCTAssertEqual(pairs(parseMultiple("101元的便當")), ["便當=101"])
+        XCTAssertEqual(pairs(parseMultiple("今天711買咖啡45")), ["711買咖啡=45"])
+        XCTAssertEqual(pairs(parseMultiple("昨天在711買便當85")), ["在711買便當=85"])
+    }
+
+    /// 問題 D：單獨的「花」是品項的一部分，只有動詞用法才清。
+    func testFlowerCharacterIsKeptInItemNames() {
+        XCTAssertEqual(pairs(parseMultiple("爆米花150")), ["爆米花=150"])
+        XCTAssertEqual(pairs(parseMultiple("花枝丸60")), ["花枝丸=60"])
+        XCTAssertEqual(pairs(parseMultiple("花生湯40")), ["花生湯=40"])
+        XCTAssertEqual(pairs(parseMultiple("買花300")), ["買花=300"])
+        XCTAssertEqual(pairs(parseMultiple("豆花50")), ["豆花=50"])
+    }
+
+    /// 問題 D：動詞用法的「花」照樣清掉。
+    func testSpendVerbHuaIsStripped() {
+        XCTAssertEqual(pairs(parseMultiple("今天花了200吃午餐")), ["吃午餐=200"])
+        XCTAssertEqual(pairs(parseMultiple("今天花200吃午餐")), ["吃午餐=200"])
+        XCTAssertEqual(pairs(parseMultiple("花200買書")), ["買書=200"])
+        XCTAssertEqual(pairs(parseMultiple("花掉500買衣服")), ["買衣服=500"])
+        XCTAssertEqual(pairs(parseMultiple("總共花300買菜")), ["買菜=300"])
+    }
+
+    /// 送審前的回歸清單：修 A～D 不可以改壞任何一條。
+    func testAcceptanceRegressionList() {
+        let cases: [(String, [String])] = [
+            ("午餐300晚餐500", ["午餐=300", "晚餐=500"]),
+            ("午餐200晚餐300宵夜200", ["午餐=200", "晚餐=300", "宵夜=200"]),
+            ("$120的午餐和$30的捷運", ["午餐=120", "捷運=30"]),
+            ("一百二十塊的午餐和三十塊的捷運", ["午餐=120", "捷運=30"]),
+            ("一塊蛋糕30元", ["蛋糕=30"]),
+            ("一塊蛋糕", ["蛋糕=nil"]),
+            ("半塊蛋糕20元", ["半塊蛋糕=20"]),
+            ("30塊車資", ["車資=30"]),
+            ("$120的晚餐$", ["晚餐=120"]),
+            ("元氣早餐100", ["元氣早餐=100"]),
+            ("大塊牛排500", ["大塊牛排=500"]),
+            ("買球鞋3,280元", ["買球鞋=3280"]),
+            ("買了3個便當共300", ["買3個便當=300"]),
+            ("一杯咖啡80元", ["一杯咖啡=80"]),
+            ("兩碗麵150", ["兩碗麵=150"]),
+            ("三包衛生紙99元", ["三包衛生紙=99"]),
+            ("一份雞排70", ["一份雞排=70"]),
+            ("午餐300和牛500", ["午餐=300", "和牛=500"]),
+            ("全家買飲料35", ["全家買飲料=35"]),
+            ("買了一公斤蘋果200", ["買一公斤蘋果=200"]),
+            ("今天花了200吃午餐", ["吃午餐=200"])
+        ]
+        for (input, expected) in cases {
+            XCTAssertEqual(pairs(parseMultiple(input)), expected, "「\(input)」")
+        }
+        // $ 開頭的第二筆：備註不可以夾著「和」或「$」。
+        let dollar = parseMultiple("$120的午餐和$30的捷運")
+        XCTAssertFalse(dollar.contains { $0.note.contains("和") || $0.note.contains("$") })
+    }
 }

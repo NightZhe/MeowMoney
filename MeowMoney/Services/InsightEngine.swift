@@ -53,9 +53,15 @@ enum InsightEngine {
 
     // MARK: - 對外入口
 
+    /// - Parameters:
+    ///   - month: 要看的月份（該月任一時間點）。
+    ///   - now: 現在時間，決定「這週」是哪一週。只有 `month` 是 `now` 所在的月份時才產生
+    ///     「這週」的頻率卡——翻到過去的月份時，「這週」不屬於那個月，硬算只會算出
+    ///     「一個月前的那一週」，跟卡片標題對不上。
     static func insights(
         for expenses: [Expense],
         month: Date,
+        now: Date = Date(),
         calendar: Calendar = .current
     ) -> [Insight] {
         guard let monthInterval = calendar.dateInterval(of: .month, for: month) else { return [] }
@@ -67,7 +73,9 @@ enum InsightEngine {
 
         let candidates: [Insight?] = [
             categoryTrendInsight(spending: spending, monthInterval: monthInterval, month: month, calendar: calendar),
-            frequencyInsight(spending: spending, month: month, calendar: calendar),
+            calendar.isDate(month, equalTo: now, toGranularity: .month)
+                ? frequencyInsight(spending: spending, now: now, calendar: calendar)
+                : nil,
             weekdayPatternInsight(currentMonthExpenses: currentMonthExpenses, calendar: calendar)
         ]
 
@@ -175,10 +183,10 @@ enum InsightEngine {
 
     private static func frequencyInsight(
         spending: [Expense],
-        month: Date,
+        now: Date,
         calendar: Calendar
     ) -> Insight? {
-        guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: month) else { return nil }
+        guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: now) else { return nil }
         let weekExpenses = spending.filter { weekInterval.contains($0.date) }
         guard !weekExpenses.isEmpty else { return nil }
 
@@ -228,10 +236,17 @@ enum InsightEngine {
 
         guard let winner = averages.max(by: { $0.average < $1.average }) else { return nil }
 
+        // `average` 是「該星期幾的總額 ÷ 該星期幾出現的天數」＝每天平均，不是每筆平均，
+        // 文案照實講「每個週X」。台幣不顯示小數，四捨五入到整數。
+        var average = winner.average
+        var roundedAverage = Decimal()
+        NSDecimalRound(&roundedAverage, &average, 0, .plain)
+        let weekdayName = weekdayNames[winner.weekday]
+
         return Insight(
             id: "weekdayPattern-\(winner.weekday)",
-            title: "你週\(weekdayNames[winner.weekday])平均花最多",
-            detail: "平均每次 \(Money.string(winner.average)) 元",
+            title: "你週\(weekdayName)平均花最多",
+            detail: "平均每個週\(weekdayName)花 \(Money.string(roundedAverage)) 元",
             kind: .weekdayPattern
         )
     }

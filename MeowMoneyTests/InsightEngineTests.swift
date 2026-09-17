@@ -36,13 +36,13 @@ final class InsightEngineTests: XCTestCase {
     // MARK: - 資料量門檻
 
     func testEmptyExpensesReturnsEmpty() {
-        let result = InsightEngine.insights(for: [], month: month, calendar: calendar)
+        let result = InsightEngine.insights(for: [], month: month, now: month, calendar: calendar)
         XCTAssertEqual(result, [])
     }
 
     func testSingleRecordReturnsEmpty() {
         let expenses = [Expense(amount: 100, category: .food, date: date(day: 15))]
-        let result = InsightEngine.insights(for: expenses, month: month, calendar: calendar)
+        let result = InsightEngine.insights(for: expenses, month: month, now: month, calendar: calendar)
         XCTAssertEqual(result, [])
     }
 
@@ -58,7 +58,7 @@ final class InsightEngineTests: XCTestCase {
             Expense(amount: 100, category: .entertainment, date: sameDay),
             Expense(amount: 100, category: .home, date: sameDay)
         ]
-        let result = InsightEngine.insights(for: expenses, month: month, calendar: calendar)
+        let result = InsightEngine.insights(for: expenses, month: month, now: month, calendar: calendar)
         XCTAssertFalse(result.contains { $0.kind == .categoryTrend })
         XCTAssertEqual(result, [])
     }
@@ -79,7 +79,7 @@ final class InsightEngineTests: XCTestCase {
         expenses.append(Expense(amount: 1000, category: .food, date: date(day: 10, month: 7)))
         expenses.append(Expense(amount: 500, category: .transport, date: date(day: 15, month: 7)))
 
-        let result = InsightEngine.insights(for: expenses, month: month, calendar: calendar)
+        let result = InsightEngine.insights(for: expenses, month: month, now: month, calendar: calendar)
         let trend = result.first { $0.kind == .categoryTrend }
         XCTAssertEqual(trend?.title, "餐飲比上個月多 100%")
         XCTAssertEqual(trend?.detail, "這個月 \(Money.string(4000))，上個月 \(Money.string(2000))")
@@ -100,7 +100,7 @@ final class InsightEngineTests: XCTestCase {
         expenses.append(Expense(amount: 30, category: .transport, date: inWeek(4)))
         expenses.append(Expense(amount: 200, category: .shopping, date: inWeek(5)))
 
-        let result = InsightEngine.insights(for: expenses, month: month, calendar: calendar)
+        let result = InsightEngine.insights(for: expenses, month: month, now: month, calendar: calendar)
         let frequency = result.first { $0.kind == .frequency }
         XCTAssertEqual(frequency?.title, "這週餐飲消費 3 次")
         XCTAssertEqual(frequency?.detail, "共 \(Money.string(195)) 元")
@@ -130,10 +130,10 @@ final class InsightEngineTests: XCTestCase {
 
         let weekdayNumber = calendar.component(.weekday, from: highWeekday)
 
-        let result = InsightEngine.insights(for: expenses, month: month, calendar: calendar)
+        let result = InsightEngine.insights(for: expenses, month: month, now: month, calendar: calendar)
         let pattern = result.first { $0.kind == .weekdayPattern }
         XCTAssertEqual(pattern?.title, "你週\(weekdayChars[weekdayNumber])平均花最多")
-        XCTAssertEqual(pattern?.detail, "平均每次 \(Money.string(1000)) 元")
+        XCTAssertEqual(pattern?.detail, "平均每個週\(weekdayChars[weekdayNumber])花 \(Money.string(1000)) 元")
     }
 
     // MARK: - 分類趨勢文案級距（倍數）
@@ -160,7 +160,7 @@ final class InsightEngineTests: XCTestCase {
 
     private func categoryTrendTitle(previousParts: [Decimal], current: Decimal?) -> String? {
         let expenses = trendExpenses(previousParts: previousParts, current: current)
-        let result = InsightEngine.insights(for: expenses, month: month, calendar: calendar)
+        let result = InsightEngine.insights(for: expenses, month: month, now: month, calendar: calendar)
         return result.first { $0.kind == .categoryTrend }?.title
     }
 
@@ -247,10 +247,71 @@ final class InsightEngineTests: XCTestCase {
             Expense(amount: 5000, category: .entertainment, date: calendar.date(byAdding: .day, value: 7, to: inWeek(0))!)
         ]
 
-        let result = InsightEngine.insights(for: expenses, month: month, calendar: calendar)
+        let result = InsightEngine.insights(for: expenses, month: month, now: month, calendar: calendar)
         XCTAssertLessThanOrEqual(result.count, 3)
         XCTAssertEqual(result.count, 3, "這組資料設計成三種 kind 都該觸發")
         let kinds = Set(result.map(\.kind))
         XCTAssertEqual(kinds, [.categoryTrend, .frequency, .weekdayPattern])
+    }
+
+    // MARK: - 星期模式文案（2026-09-17 驗收）
+
+    /// 平均是「每個週X」（總額 ÷ 天數），不是每筆平均；金額取整數顯示。
+    /// 2026-08：3、10、17 號是週一，4、11 號是週二。
+    func testWeekdayPatternDetailIsPerDayAverageRoundedToInteger() {
+        let expenses: [Expense] = [
+            // 週一：3 天共 320 元（3 號有兩筆）→ 每個週一 106.67，顯示 107；每筆平均會是 80
+            Expense(amount: 50, category: .food, date: date(day: 3)),
+            Expense(amount: 50, category: .shopping, date: date(day: 3)),
+            Expense(amount: 100, category: .entertainment, date: date(day: 10)),
+            Expense(amount: 120, category: .home, date: date(day: 17)),
+            // 週二：2 天共 20 元
+            Expense(amount: 10, category: .transport, date: date(day: 4)),
+            Expense(amount: 10, category: .medical, date: date(day: 11))
+        ]
+        let result = InsightEngine.insights(for: expenses, month: month, now: month, calendar: calendar)
+        let pattern = result.first { $0.kind == .weekdayPattern }
+        XCTAssertEqual(pattern?.title, "你週一平均花最多")
+        XCTAssertEqual(pattern?.detail, "平均每個週一花 107 元")
+    }
+
+    // MARK: - 「這週」只屬於當月（2026-09-17 驗收）
+
+    /// 同一組 8 月資料：看當月（now 在 8 月）有「這週」卡，翻到 8 月但現在已是 9 月就不該有。
+    /// 修正前，翻到過去月份會把「那個月同一天所在的那週」當成「這週」。
+    func testFrequencyInsightOnlyForCurrentMonth() {
+        // 2026-08-16（週日）～ 22 日是 8/17 所在的週
+        let expenses: [Expense] = [
+            Expense(amount: 65, category: .food, date: date(day: 17)),
+            Expense(amount: 65, category: .food, date: date(day: 18)),
+            Expense(amount: 65, category: .food, date: date(day: 19)),
+            Expense(amount: 30, category: .transport, date: date(day: 2)),
+            Expense(amount: 200, category: .shopping, date: date(day: 25))
+        ]
+        let viewedMonth = date(day: 17)
+
+        let current = InsightEngine.insights(for: expenses, month: viewedMonth, now: viewedMonth, calendar: calendar)
+        XCTAssertEqual(current.first { $0.kind == .frequency }?.title, "這週餐飲消費 3 次")
+
+        let september17 = date(day: 17, month: 9)
+        let past = InsightEngine.insights(for: expenses, month: viewedMonth, now: september17, calendar: calendar)
+        XCTAssertFalse(past.contains { $0.kind == .frequency }, "翻到過去月份不該出現「這週」卡")
+    }
+
+    /// 看當月時，「這週」是 now 所在的週，不是 month 參數那個時間點所在的週。
+    func testFrequencyInsightUsesNowWeekNotMonthAnchorWeek() {
+        let now = date(day: 17, month: 9)       // 2026-09-13（週日）～ 19 日
+        let anchor = date(day: 1, month: 9)     // 同月但不同週
+        let expenses: [Expense] = [
+            Expense(amount: 30, category: .transport, date: date(day: 14, month: 9)),
+            Expense(amount: 30, category: .transport, date: date(day: 15, month: 9)),
+            Expense(amount: 30, category: .transport, date: date(day: 16, month: 9)),
+            // 9/1 所在的週有 3 筆餐飲，不該被當成「這週」
+            Expense(amount: 80, category: .food, date: date(day: 1, month: 9)),
+            Expense(amount: 80, category: .food, date: date(day: 2, month: 9)),
+            Expense(amount: 80, category: .food, date: date(day: 3, month: 9))
+        ]
+        let result = InsightEngine.insights(for: expenses, month: anchor, now: now, calendar: calendar)
+        XCTAssertEqual(result.first { $0.kind == .frequency }?.title, "這週交通消費 3 次")
     }
 }

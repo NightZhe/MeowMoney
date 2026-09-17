@@ -27,8 +27,9 @@ enum ExpenseParser {
 
     static func parse(_ raw: String, now: Date = Date(), calendar: Calendar = .current) -> ParsedEntry {
         let normalized = normalize(raw)
+        let masked = maskStoreNames(in: normalized)
 
-        var working = normalized
+        var working = masked.text
         let dateResult = extractDate(from: working, now: now, calendar: calendar)
         working = dateResult.remaining
         working = stripLeadingQuantity(working)
@@ -39,7 +40,10 @@ enum ExpenseParser {
         working = amountResult.remaining
 
         let category: ExpenseCategory = isIncome ? .income : detectCategory(in: normalized) ?? .other
-        let note = makeNote(from: working, fallback: category, isIncome: isIncome)
+        let note = restoreStoreNames(
+            in: makeNote(from: working, fallback: category, isIncome: isIncome),
+            names: masked.names
+        )
 
         return ParsedEntry(
             amount: amountResult.amount,
@@ -113,8 +117,13 @@ enum ExpenseParser {
     private static let amountContinuationCharacters: Set<Character> = [
         "月", "日", "號", "年", "時", "分", "秒", "半",
         "多", "幾", "成", "折", "樓", "層", "歲", "度", "倍", "週", "周",
-        "公", "克", "斤", "磅", "升", "米", "尺", "吋", "%", "％"
+        "克", "斤", "磅", "升", "米", "尺", "吋", "%", "％"
     ]
+
+    /// 接在數字後面的完整單位詞。「公」不能單獨當延續字：它擋住了「捷運二十五公車十五」
+    /// 「午餐一百公園門票五十」這類切點，後一筆整筆被併進前一筆、金額丟失（2026-09 驗收案例）。
+    /// 只有整個單位詞出現時才算「數字還沒講完」（「買了一公斤蘋果200」）。
+    private static let amountContinuationWords = ["公斤", "公克", "公升", "公里", "公分", "公尺", "公噸", "公頃"]
 
     /// 第一個字雖然落在量詞/延續字裡，但兩個字合起來是一般詞彙，不該擋住切句。
     /// 例：「點」是量詞（三點），但「點心」是品項。
@@ -127,6 +136,12 @@ enum ExpenseParser {
     /// 口語連接詞。它出現在切點上時不屬於任何一筆，要從片段的頭尾拿掉，
     /// 否則備註會變成「和捷運」。依長度由長到短比對。
     private static let connectorWords = ["還有", "加上", "以及", "然後", "再加", "和", "跟"]
+
+    /// 以單字連接詞（和／跟）開頭、但整個是品項名稱的詞。切點後的片段開頭若是「和／跟」，
+    /// 預設當連接詞拿掉（「咖啡60和蛋糕90」的第二筆是「蛋糕」）；只有這些詞例外保留，
+    /// 否則「午餐300和牛500」會被削成「牛」。清單可擴充——漏收的代價是品項名少一個字，
+    /// 金額與筆數不受影響。
+    private static let connectorLeadingItemWords = ["和牛", "和菓子", "和風", "和服", "和室", "跟團"]
 
     /// 一段文字裡的一個數字片段，含位置與語序判斷。
     private struct AmountSpan {
@@ -166,15 +181,25 @@ enum ExpenseParser {
     }
 
     /// 掃出所有「值 > 0」的數字片段，順便判斷每一段的語序。
-    private static func amountSpans(in probe: [Character]) -> [AmountSpan] {
+    private static func amountSpans(in probe: [Character], storeNames: [Range<Int>]) -> [AmountSpan] {
+        let storeNameEnds = Dictionary(
+            uniqueKeysWithValues: storeNames.map { ($0.lowerBound, $0.upperBound) }
+        )
         var spans: [AmountSpan] = []
         var index = 0
         while index < probe.count {
+            // 店名裡的數字（7-11、85度C）不是金額，整段跳過，不參與金額與切點判斷。
+            if let storeEnd = storeNameEnds[index] {
+                index = storeEnd
+                continue
+            }
             guard ChineseNumberParser.isNumericCharacter(probe[index]) else {
                 index += 1
                 continue
             }
-            let runEnd = numericRunEnd(in: probe, from: index)
+            // 數字不可以吃進緊接在後面的店名（「珍奶55八方雲集」的 55 不是 558）。
+            let nextStoreStart = storeNames.map(\.lowerBound).filter { $0 > index }.min() ?? probe.count
+            let runEnd = min(numericRunEnd(in: probe, from: index), nextStoreStart)
             guard let value = numericValue(in: probe, from: index, to: runEnd), value > 0 else {
                 index = max(runEnd, index + 1)
                 continue
@@ -217,12 +242,14 @@ enum ExpenseParser {
     }
 
     private static func splitPoints(in probe: [Character]) -> [Int] {
-        let spans = amountSpans(in: probe)
+        let storeNames = storeNameRanges(in: probe)
+        let spans = amountSpans(in: probe, storeNames: storeNames)
         guard spans.count > 1 else { return [] }
 
+        let storeNameStarts = Set(storeNames.map(\.lowerBound))
         var cuts: [Int] = []
         for (a, b) in zip(spans, spans.dropFirst()) {
-            guard let cut = splitPoint(between: a, and: b, in: probe) else { continue }
+            guard let cut = splitPoint(between: a, and: b, in: probe, storeNameStarts: storeNameStarts) else { continue }
             guard cut > (cuts.last ?? 0), cut < probe.count else { continue }
             cuts.append(cut)
         }
@@ -230,10 +257,16 @@ enum ExpenseParser {
     }
 
     /// 決定相鄰兩筆金額之間的切點。回傳 nil = 判斷不了，維持同一段。
-    private static func splitPoint(between a: AmountSpan, and b: AmountSpan, in probe: [Character]) -> Int? {
+    private static func splitPoint(
+        between a: AmountSpan,
+        and b: AmountSpan,
+        in probe: [Character],
+        storeNameStarts: Set<Int>
+    ) -> Int? {
         guard a.isAmountFirst else {
-            // 品項在前：切在這筆金額之後，那裡就是下一個品項的開頭。
-            guard a.end < probe.count, isBoundary(in: probe, at: a.end) else { return nil }
+            // 品項在前：切在這筆金額之後，那裡就是下一個品項的開頭。緊接著店名時一定是新的品項。
+            guard a.end < probe.count,
+                  storeNameStarts.contains(a.end) || isBoundary(in: probe, at: a.end) else { return nil }
             return a.end
         }
         if b.isAmountFirst {
@@ -283,16 +316,11 @@ enum ExpenseParser {
 
     /// 切點上的連接詞不屬於任何一筆，拿掉它。`head`／`tail` 只在該端真的是切點時為 true，
     /// 所以沒被切過的整句不受影響。
-    /// 單字連接詞（和／跟）只在後面直接接數字時才拿掉——否則「和牛500」會被削成「牛500」。
+    /// 開頭的「和／跟」若屬於 `connectorLeadingItemWords`（和牛、和菓子…）就保留。
     private static func trimConnectors(_ piece: String, head: Bool, tail: Bool) -> String {
         var text = piece
-        if head {
+        if head, !connectorLeadingItemWords.contains(where: { text.hasPrefix($0) }) {
             for word in connectorWords where text.hasPrefix(word) {
-                if word.count == 1,
-                   let next = firstSignificantCharacter(after: text.dropFirst()),
-                   !ChineseNumberParser.isNumericCharacter(next) {
-                    break
-                }
                 text = String(text.dropFirst(word.count))
                 break
             }
@@ -304,14 +332,6 @@ enum ExpenseParser {
             }
         }
         return text
-    }
-
-    /// 跳過幣別符號（`$`／`＄`）找出後面第一個「有意義」的字元，用來判斷單字連接詞
-    /// 後面是不是數字。幣別符號可能夾在連接詞跟數字之間（例如「和$30」——`amountStart`
-    /// 會把 `$` 併進金額片段，但切點只切在數字前一個位置，連接詞後緊接的仍是 `$`），
-    /// 不能讓它擋住「後面是數字」的判斷，否則「和$30的捷運」的「和」不會被當成連接詞拿掉。
-    private static func firstSignificantCharacter(after text: Substring) -> Character? {
-        text.first { $0 != "$" && $0 != "＄" }
     }
 
     /// 數字片段的結束位置（exclusive）。夾在阿拉伯數字之間的半形逗號算數字的一部分。
@@ -362,6 +382,9 @@ enum ExpenseParser {
         if ChineseNumberParser.isNumericCharacter(next) { return false }
         if next == "," || next == "." { return false }
         if boundaryStopwords.contains(next) { return false }
+        if amountContinuationWords.contains(where: { matches($0, in: chars, at: index, limit: chars.count) }) {
+            return false
+        }
         if amountContinuationCharacters.contains(next) || counterWords.contains(next) {
             let pair = index + 1 < chars.count ? String([next, chars[index + 1]]) : String(next)
             if !continuationExceptions.contains(pair) { return false }
@@ -381,6 +404,161 @@ enum ExpenseParser {
               (0xFF10...0xFF19).contains(scalar.value),
               let converted = Unicode.Scalar(scalar.value - 0xFF10 + 0x30) else { return c }
         return Character(converted)
+    }
+
+    // MARK: - 帶數字的店名
+
+    /// 帶數字的台灣常見店名／品牌。這些數字不是金額：不保護的話「7-11咖啡45」會切成
+    /// 7 元、11 元、45 元三筆，「85度C咖啡60」會記成 85 元。
+    ///
+    /// 取捨原則：寧可少切，不可切錯；金額錯 > 多一筆 > 品項名多幾個字。
+    /// - 帶非數字識別字的名稱（7-11、85度C、50嵐、五十嵐、八方雲集…）不會跟一般講法撞，一律保護。
+    /// - 純數字的名稱（711、101）本身就可能是金額（「午餐101晚餐200」），只在上下文明確是
+    ///   地點時才保護，見 `hasStoreContext`。
+    /// - 中文數字開頭的店名只收整個詞不會有第二種意思的幾個；「一蘭」「一芳」「二十五度」
+    ///   這類短名稱容易跟數量講法撞，刻意不收。
+    ///
+    /// 清單可擴充：加一筆 `StoreName` 即可，`alias` 用小寫、分隔號寫「-」
+    /// （比對時大小寫、全半形、「-」與空白視為相同，見 `storeNameFold`）。
+    private struct StoreName {
+        let alias: String
+        let display: String
+        /// 純數字名稱：需要上下文佐證才算店名。
+        let needsContext: Bool
+    }
+
+    private static let storeNames: [StoreName] = [
+        StoreName(alias: "7-eleven", display: "7-Eleven", needsContext: false),
+        StoreName(alias: "7eleven", display: "7-Eleven", needsContext: false),
+        StoreName(alias: "7-11", display: "7-11", needsContext: false),
+        StoreName(alias: "711", display: "711", needsContext: true),
+        StoreName(alias: "85度c", display: "85度C", needsContext: false),
+        StoreName(alias: "85°c", display: "85°C", needsContext: false),
+        StoreName(alias: "50嵐", display: "50嵐", needsContext: false),
+        StoreName(alias: "五十嵐", display: "五十嵐", needsContext: false),
+        StoreName(alias: "台北101", display: "台北101", needsContext: false),
+        StoreName(alias: "101", display: "101", needsContext: true),
+        StoreName(alias: "八方雲集", display: "八方雲集", needsContext: false),
+        StoreName(alias: "三商巧福", display: "三商巧福", needsContext: false),
+        StoreName(alias: "四海遊龍", display: "四海遊龍", needsContext: false),
+        // 「統一超商」「統一發票」：「一」在這裡從來不是數量。
+        StoreName(alias: "統一", display: "統一", needsContext: false)
+    ].sorted { $0.alias.count > $1.alias.count }
+
+    /// 純數字店名前面可以接的字：表示「去某個地方」。
+    private static let storeLocationPrefixes: Set<Character> = ["在", "去", "到", "逛", "從"]
+
+    /// 比對用的字元折疊：小寫、全形轉半形、各種橫線與空白都當成「-」。長度 1:1，索引對得上原字串。
+    /// 空白也要當成「-」：`normalize` 會把「7-11」的「-」換成空白。
+    private static func storeNameFold(_ c: Character) -> Character {
+        if c.isWhitespace || c == "-" || c == "－" || c == "—" || c == "–" || c == "‐" { return "-" }
+        let half = String(c).applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? String(c)
+        let lowered = half.lowercased()
+        return lowered.count == 1 ? Character(lowered) : c
+    }
+
+    /// 找出文字裡所有店名的位置（不重疊，由左到右，長名稱優先）。
+    private static func storeNameRanges(in chars: [Character]) -> [Range<Int>] {
+        storeNameMatches(in: chars).map(\.range)
+    }
+
+    private static func storeNameMatches(in chars: [Character]) -> [(range: Range<Int>, name: StoreName)] {
+        let folded = chars.map(storeNameFold)
+        var found: [(range: Range<Int>, name: StoreName)] = []
+        var index = 0
+        while index < folded.count {
+            let hit = storeNames.first { name in
+                let alias = Array(name.alias)
+                guard index + alias.count <= folded.count,
+                      Array(folded[index..<(index + alias.count)]) == alias else { return false }
+                return isStoreNameBoundary(in: chars, range: index..<(index + alias.count), name: name)
+            }
+            if let hit {
+                let range = index..<(index + hit.alias.count)
+                found.append((range, hit))
+                index = range.upperBound
+            } else {
+                index += 1
+            }
+        }
+        return found
+    }
+
+    /// 店名兩端不能黏著**同一種寫法**的數字（「37-11」「7-1145」「三百五十嵐」是講不清楚的數字，
+    /// 不是店名），純數字名稱另外要有上下文。阿拉伯數字接中文數字開頭的店名
+    /// （「珍奶55八方雲集」）不算黏著：兩種寫法混在一起本來就不是一個數字。
+    private static func isStoreNameBoundary(in chars: [Character], range: Range<Int>, name: StoreName) -> Bool {
+        if range.lowerBound > 0, isSameNumeralScript(chars[range.lowerBound - 1], chars[range.lowerBound]) {
+            return false
+        }
+        if range.upperBound < chars.count, isSameNumeralScript(chars[range.upperBound - 1], chars[range.upperBound]) {
+            return false
+        }
+        guard name.needsContext else { return true }
+        return hasStoreContext(in: chars, range: range)
+    }
+
+    /// 兩個字元是否都是數字，而且同為阿拉伯數字或同為中文數字。
+    private static func isSameNumeralScript(_ a: Character, _ b: Character) -> Bool {
+        guard ChineseNumberParser.isNumericCharacter(a), ChineseNumberParser.isNumericCharacter(b) else { return false }
+        return isArabicDigit(halfWidthDigit(a)) == isArabicDigit(halfWidthDigit(b))
+    }
+
+    /// 純數字店名（711、101）的上下文：
+    /// - 後面必須接一般文字——接幣別（「101元」）、量詞、延續字、「的」、或句尾，都當金額。
+    /// - 前面必須是片段開頭、只有時間詞（「今天711買咖啡45」）、或「在／去／到…」。
+    /// 「午餐101晚餐200」前面有品項，所以 101 仍是金額。
+    private static func hasStoreContext(in chars: [Character], range: Range<Int>) -> Bool {
+        guard range.upperBound < chars.count else { return false }
+        let next = chars[range.upperBound]
+        if next.isWhitespace || next == "k" || next == "K" || next == "," || next == "." { return false }
+        if currencySuffixes.contains(next) || counterWords.contains(next)
+            || amountContinuationCharacters.contains(next) || boundaryStopwords.contains(next) {
+            return false
+        }
+
+        var prefixStart = range.lowerBound
+        while prefixStart > 0, !chars[prefixStart - 1].isWhitespace { prefixStart -= 1 }
+        guard prefixStart < range.lowerBound else { return true }
+        if storeLocationPrefixes.contains(chars[range.lowerBound - 1]) { return true }
+        var prefix = String(chars[prefixStart..<range.lowerBound])
+        for word in relativeDayWords.map(\.word).sorted(by: { $0.count > $1.count }) {
+            prefix = prefix.replacingOccurrences(of: word, with: "")
+        }
+        return prefix.isEmpty
+    }
+
+    /// 解析前把店名換成佔位字元（Unicode 私用區，一個店名一個字元），金額、日期、量詞判斷
+    /// 都看不到它裡面的數字；備註產生後再用 `restoreStoreNames` 換回顯示名稱。
+    private static func maskStoreNames(in text: String) -> (text: String, names: [String]) {
+        let chars = Array(text)
+        let matches = storeNameMatches(in: chars)
+        guard !matches.isEmpty else { return (text, []) }
+
+        var result: [Character] = []
+        var names: [String] = []
+        var index = 0
+        for match in matches {
+            result.append(contentsOf: chars[index..<match.range.lowerBound])
+            result.append(storeNamePlaceholder(names.count))
+            names.append(match.name.display)
+            index = match.range.upperBound
+        }
+        result.append(contentsOf: chars[index...])
+        return (String(result), names)
+    }
+
+    private static func restoreStoreNames(in note: String, names: [String]) -> String {
+        guard !names.isEmpty else { return note }
+        var result = note
+        for (i, name) in names.enumerated() {
+            result = result.replacingOccurrences(of: String(storeNamePlaceholder(i)), with: name)
+        }
+        return result
+    }
+
+    private static func storeNamePlaceholder(_ index: Int) -> Character {
+        Character(Unicode.Scalar(0xE000 + UInt32(index))!)
     }
 
     // MARK: - 正規化
@@ -718,12 +896,14 @@ enum ExpenseParser {
     /// 依長度由長到短移除，避免短詞先吃掉長詞的一部分。
     private static let fillerWords: [String] = [
         "幫我記一筆", "幫我記帳", "記一筆", "記帳", "記下", "幫我",
-        "總共花了", "一共花了", "總共", "一共", "花了", "花費", "支出", "收入",
+        "總共花了", "一共花了", "總共花", "一共花", "總共", "一共", "花了", "花掉", "花費", "支出", "收入",
         "付了", "刷了", "大概", "差不多", "左右", "而已", "然後", "還有",
         // 不放單獨的「錢」：它會把「撿到錢」吃成「撿到」。
         // 不放「元/塊/圓」：盲目整段替換會把「元氣早餐」「大塊牛排」這類品項名稱削壞
         // （2026-09-09 實機案例）。交給 `stripCurrencyResidue` 只在確定是幣別殘留時才清。
-        "花", "共", "了", "的", "喔", "啦", "吧", "嗎", "呢"
+        // 不放單獨的「花」：它會把「爆米花」「花枝丸」「買花」削壞。動詞用法由上面的
+        // 「花了／花掉」與 `stripStandaloneSpendVerb` 處理。
+        "共", "了", "的", "喔", "啦", "吧", "嗎", "呢"
     ]
 
     /// 幣別「單位字」。混在句子裡當殘留時，判斷依據不是它前面有沒有數字——
@@ -789,8 +969,24 @@ enum ExpenseParser {
         return String(result)
     }
 
+    /// 「今天花200吃午餐」「花200買書」的「花」是動詞：金額被拿掉之後，它左右都是空白或
+    /// 字串邊界。只清這種形態——前面有字的「買花」「豆花」、後面接字的「花枝丸」「花生湯」
+    /// 都是品項，一律保留。代價：「午餐花200」的備註是「午餐花」（多一個字，金額不受影響）。
+    private static func stripStandaloneSpendVerb(_ text: String) -> String {
+        let chars = Array(text)
+        var result: [Character] = []
+        result.reserveCapacity(chars.count)
+        for (i, char) in chars.enumerated() {
+            let leftIsBoundary = i == 0 || chars[i - 1].isWhitespace
+            let rightIsBoundary = i + 1 == chars.count || chars[i + 1].isWhitespace
+            if char == "花", leftIsBoundary, rightIsBoundary { continue }
+            result.append(char)
+        }
+        return String(result)
+    }
+
     static func makeNote(from text: String, fallback: ExpenseCategory, isIncome: Bool) -> String {
-        var working = stripCurrencyResidue(text)
+        var working = stripStandaloneSpendVerb(stripCurrencyResidue(text))
         for word in fillerWords.sorted(by: { $0.count > $1.count }) {
             working = working.replacingOccurrences(of: word, with: " ")
         }
